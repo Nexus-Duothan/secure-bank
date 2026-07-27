@@ -1,0 +1,26 @@
+{
+  "name": "secure-bank-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SecureBank Polyglot Monorepo",
+  "scripts": {
+    "prepare": "husky",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md,yml,java}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md,yml,java}\"",
+    "lint:frontend": "npm --prefix frontend/web-service run lint"
+  },
+  "devDependencies": {
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.7",
+    "prettier": "^3.3.2",
+    "prettier-plugin-java": "^2.6.6"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,css,md,yml,java}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt --manifest-path security/audit-recovery-service/Cargo.toml --"
+    ]
+  }
+}

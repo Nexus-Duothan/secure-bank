@@ -1,0 +1,14 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/securebank
+    username: securebank
+    password: securebank_secret_pass
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
