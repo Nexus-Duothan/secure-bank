@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom
 import { Layout } from 'antd';
 import { BankOutlined } from '@ant-design/icons';
 import Login from './pages/Login/Login';
+import CreateAccount from './pages/CreateAccount/CreateAccount';
+import ForgotPassword from './pages/ForgotPassword/ForgotPassword';
+import ResetPassword from './pages/ResetPassword/ResetPassword';
 import OtpVerification from './pages/OtpVerification/OtpVerification';
 import Dashboard from './pages/Dashboard/Dashboard';
 import AccountDetails from './pages/AccountDetails/AccountDetails';
@@ -50,8 +53,11 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<CreateAccount />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
+        <Route path="/verify-otp" element={<OtpVerification />} />
         <Route element={<AppShell />}>
-          <Route path="/verify-otp" element={<OtpVerification />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/accounts/:id" element={<AccountDetails />} />
           <Route path="/transfer" element={<TransferMoney />} />

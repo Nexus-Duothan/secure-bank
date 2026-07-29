@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Form, Input, Typography, theme } from 'antd';
-import { LockFilled } from '@ant-design/icons';
 import type { AxiosError } from 'axios';
 import { authService } from '../../api/authService';
+import AuthLayout from '../../components/AuthLayout';
+import TrustIndicator from '../../components/TrustIndicator';
 
-const { Title, Text, Link } = Typography;
+const { Text, Link } = Typography;
 
 interface LoginFormValues {
   usernameOrEmail: string;
@@ -41,100 +42,69 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: token.colorBgLayout,
-        display: 'flex',
-        justifyContent: 'center',
-        padding: '64px 24px',
-      }}
-    >
-      <Flex vertical style={{ width: '100%', maxWidth: 440 }}>
-        <Text
-          className="font-display"
-          style={{ fontSize: 22, fontWeight: 600, color: token.colorText }}
-        >
-          SecureBank
-        </Text>
+    <AuthLayout heading="Welcome back">
+      <Card
+        styles={{ body: { padding: 32 } }}
+        style={{ boxShadow: '0 8px 24px rgba(11, 27, 43, 0.06)' }}
+      >
+        {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
 
-        <Title
-          level={2}
-          className="font-display"
-          style={{ margin: '40px 0 32px', color: token.colorText, fontWeight: 500 }}
+        <Form<LoginFormValues>
+          layout="vertical"
+          colon={false}
+          requiredMark={false}
+          disabled={submitting}
+          onFinish={handleFinish}
         >
-          Welcome back
-        </Title>
-
-        <Card
-          styles={{ body: { padding: 32 } }}
-          style={{ boxShadow: '0 8px 24px rgba(11, 27, 43, 0.06)' }}
-        >
-          {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
-
-          <Form<LoginFormValues>
-            layout="vertical"
-            colon={false}
-            requiredMark={false}
-            disabled={submitting}
-            onFinish={handleFinish}
+          <Form.Item
+            label={<span style={{ fontWeight: 600 }}>Email</span>}
+            name="usernameOrEmail"
+            rules={[{ required: true, message: 'Please enter your email' }]}
           >
-            <Form.Item
-              label={<span style={{ fontWeight: 600 }}>Email</span>}
-              name="usernameOrEmail"
-              rules={[{ required: true, message: 'Please enter your email' }]}
+            <Input placeholder="you@email.com" size="large" autoComplete="username" />
+          </Form.Item>
+
+          <Form.Item
+            label={<span style={{ fontWeight: 600 }}>Password</span>}
+            name="password"
+            rules={[{ required: true, message: 'Please enter your password' }]}
+            style={{ marginBottom: 8 }}
+          >
+            <Input.Password size="large" autoComplete="current-password" />
+          </Form.Item>
+
+          <Flex justify="flex-end" style={{ marginBottom: 24 }}>
+            <Link
+              onClick={() => navigate('/forgot-password')}
+              style={{ color: token.colorPrimary }}
             >
-              <Input placeholder="you@email.com" size="large" autoComplete="username" />
-            </Form.Item>
+              Forgot password?
+            </Link>
+          </Flex>
 
-            <Form.Item
-              label={<span style={{ fontWeight: 600 }}>Password</span>}
-              name="password"
-              rules={[{ required: true, message: 'Please enter your password' }]}
-              style={{ marginBottom: 8 }}
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              block
+              loading={submitting}
+              style={{ fontWeight: 600 }}
             >
-              <Input.Password size="large" autoComplete="current-password" />
-            </Form.Item>
+              Sign in
+            </Button>
+          </Form.Item>
+        </Form>
+      </Card>
 
-            <Flex justify="flex-end" style={{ marginBottom: 24 }}>
-              <Link
-                href="#"
-                onClick={(e) => e.preventDefault()}
-                style={{ color: token.colorPrimary }}
-              >
-                Forgot password?
-              </Link>
-            </Flex>
+      <TrustIndicator text="256-bit encrypted • Identity verified" />
 
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                type="primary"
-                htmlType="submit"
-                block
-                loading={submitting}
-                style={{ fontWeight: 600 }}
-              >
-                Sign in
-              </Button>
-            </Form.Item>
-          </Form>
-        </Card>
-
-        <Flex align="center" gap={8} style={{ marginTop: 24 }}>
-          <LockFilled style={{ color: token.colorPrimary }} />
-          <Text style={{ color: token.colorPrimary, fontWeight: 500 }}>
-            256-bit encrypted &bull; Identity verified
-          </Text>
-        </Flex>
-
-        <Text style={{ textAlign: 'center', marginTop: 24, color: token.colorTextSecondary }}>
-          New to SecureBank?{' '}
-          <Link href="#" onClick={(e) => e.preventDefault()} style={{ color: token.colorPrimary }}>
-            Create account
-          </Link>
-        </Text>
-      </Flex>
-    </div>
+      <Text style={{ textAlign: 'center', marginTop: 24, color: token.colorTextSecondary }}>
+        New to SecureBank?{' '}
+        <Link onClick={() => navigate('/signup')} style={{ color: token.colorPrimary }}>
+          Create account
+        </Link>
+      </Text>
+    </AuthLayout>
   );
 };
 

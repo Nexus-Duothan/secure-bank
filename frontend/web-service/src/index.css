@@ -19,3 +19,17 @@ body {
 .font-mono {
   font-family: 'IBM Plex Mono', monospace;
 }
+
+.otp-boxes .ant-otp {
+  gap: 10px;
+}
+
+.otp-boxes .ant-otp-input {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+}
