@@ -1,42 +1,51 @@
 # Audit & Recovery Service (`audit-recovery-service`)
 
-The **Audit & Recovery Service** is a memory-safe Rust service responsible for immutable real-time transaction journaling, continuous threat auditing, and automated system state recovery.
+The **Audit & Recovery Service** is a memory-safe **Rust** microservice responsible for maintaining an immutable, append-only, cryptographic SHA-256 tamper-evident transaction journal (**FR-30**), detecting anomalous behavior (**FR-31**), and enabling automated microservice state recovery through clean audit log replay (**FR-32**, **NFR-D5**).
 
 ---
 
-## 🎯 What to Develop
+## 🎯 Implemented Features & SRS Mapping
 
-- **Immutable Transaction Journal**: Maintain append-only, tamper-evident transaction logs (`FR-30`, `NFR-D5`).
-- **Fraud & Anomaly Detection**: Real-time anomaly detection rules (unusual frequency, location, amount spikes) (`FR-31`).
-- **Automated State Replay & Recovery**: Rebuild compromised service states by replaying clean audit journal logs (`FR-32`, `NFR-D5`).
-- **Memory Safety & High Performance**: Zero buffer-overflow vulnerabilities leveraging Rust's memory safety primitives (`NFR-S8`).
+- **Cryptographic SHA-256 Hash Chaining**: Every audit entry is cryptographically linked to the preceding entry using SHA-256 Merkle hash chaining (`hash = SHA256(prev_hash + id + timestamp + service_name + event_type + payload)`).
+- **Tamper-Evident Integrity Verification**: Computes sequential cryptographic digests over the journal to detect modified payloads or out-of-order deletion.
+- **Microservice State Replay & Recovery**: Streams verified historical event logs per service scope to automatically reconstruct state following database corruption or disaster recovery (**FR-32**, **NFR-D5**, **NFR-D1**).
+- **Fraud & Anomaly Detection**: Analyzes event frequency and authentication failures to flag high-risk operations and issue account holds (**FR-31**).
 
 ---
 
-## 🛠️ Prerequisites
+## 📡 REST API Endpoint Specification
 
-- Rust & Cargo 1.97+
-- Apache Kafka (`localhost:9092`)
+All endpoints are exposed under `/api/v1/audit`:
+
+| Method | Endpoint                              | Description                                                                                  |
+| :----- | :------------------------------------ | :------------------------------------------------------------------------------------------- |
+| `POST` | `/api/v1/audit/entries`               | Record a new audit event (computes SHA-256 hash chain and appends to journal).               |
+| `GET`  | `/api/v1/audit/entries`               | Query audit trail with filtering by `service_name`, `user_id`, or `event_type`.              |
+| `GET`  | `/api/v1/audit/verify`                | Perform full cryptographic integrity check over the audit journal chain.                     |
+| `POST` | `/api/v1/audit/replay/{service_name}` | Replay clean, verified event logs for rebuilding microservice state (**FR-32**).             |
+| `GET`  | `/api/v1/audit/anomalies`             | Query active anomaly and threat detection reports for administrative monitoring (**FR-34**). |
 
 ---
 
 ## 🚀 How to Setup & Run
 
-### 1. Start Message Broker
+### 1. Build & Run Service
 
 ```bash
-docker compose up -d kafka
-```
-
-### 2. Verify Syntax & Build
-
-```bash
+cd security/audit-recovery-service
 cargo check
-cargo build
+cargo run
 ```
 
-### 3. Run Service
+The service will start an Axum HTTP REST server on port `8089`.
+
+---
+
+## 🧪 Running Automated Tests
+
+Run the integration test suite (`tests/audit_tests.rs`):
 
 ```bash
-cargo run
+cd security/audit-recovery-service
+cargo test
 ```
