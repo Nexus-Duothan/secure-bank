@@ -30,6 +30,7 @@ dist/
 build/
 .env.local
 .env.*.local
+tsconfig.tsbuildinfo
 
 # Rust
 security/audit-recovery-service/target/
