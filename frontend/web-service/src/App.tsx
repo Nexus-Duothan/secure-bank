@@ -57,11 +57,11 @@ const App: React.FC = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
         <Route path="/verify-otp" element={<OtpVerification />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/accounts/:id" element={<AccountDetails />} />
+        <Route path="/transfer" element={<TransferMoney />} />
+        <Route path="/pay" element={<PayVendor />} />
         <Route element={<AppShell />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/accounts/:id" element={<AccountDetails />} />
-          <Route path="/transfer" element={<TransferMoney />} />
-          <Route path="/pay" element={<PayVendor />} />
           <Route path="/loans/apply" element={<LoanApplication />} />
           <Route path="/loans/:id/repayments" element={<LoanRepaymentTracker />} />
           <Route path="/activity" element={<TransactionHistory />} />
