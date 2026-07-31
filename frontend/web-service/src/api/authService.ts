@@ -79,6 +79,7 @@ export const authService = {
     client
       .post<ResetPasswordResponse>('/password-reset/confirm', { token, newPassword })
       .then((response) => response.data),
+  logout: () => client.post('/logout').then((response) => response.data),
 };
 
 export default authService;

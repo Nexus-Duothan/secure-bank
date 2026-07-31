@@ -1,7 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
-import { Layout } from 'antd';
-import { BankOutlined } from '@ant-design/icons';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login/Login';
 import CreateAccount from './pages/CreateAccount/CreateAccount';
 import ForgotPassword from './pages/ForgotPassword/ForgotPassword';
@@ -17,36 +15,6 @@ import TransactionHistory from './pages/TransactionHistory/TransactionHistory';
 import Notifications from './pages/Notifications/Notifications';
 import Profile from './pages/Profile/Profile';
 
-const { Header, Content, Footer } = Layout;
-
-const AppShell: React.FC = () => {
-  return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', background: '#001529' }}>
-        <div
-          style={{
-            color: '#fff',
-            fontSize: '20px',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}
-        >
-          <BankOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
-          SecureBank Platform
-        </div>
-      </Header>
-      <Content style={{ padding: '40px 50px' }}>
-        <div style={{ background: '#fff', padding: 24, minHeight: 380, borderRadius: 8 }}>
-          <Outlet />
-        </div>
-      </Content>
-      <Footer style={{ textAlign: 'center' }}>SecureBank ©2026 Prepared by Nexus</Footer>
-    </Layout>
-  );
-};
-
 const App: React.FC = () => {
   return (
     <BrowserRouter>
@@ -61,13 +29,11 @@ const App: React.FC = () => {
         <Route path="/accounts/:id" element={<AccountDetails />} />
         <Route path="/transfer" element={<TransferMoney />} />
         <Route path="/pay" element={<PayVendor />} />
-        <Route element={<AppShell />}>
-          <Route path="/loans/apply" element={<LoanApplication />} />
-          <Route path="/loans/:id/repayments" element={<LoanRepaymentTracker />} />
-          <Route path="/activity" element={<TransactionHistory />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/profile" element={<Profile />} />
-        </Route>
+        <Route path="/loans/apply" element={<LoanApplication />} />
+        <Route path="/loans/:id/repayments" element={<LoanRepaymentTracker />} />
+        <Route path="/activity" element={<TransactionHistory />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </BrowserRouter>
   );
