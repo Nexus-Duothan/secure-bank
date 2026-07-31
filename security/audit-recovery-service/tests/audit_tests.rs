@@ -127,3 +127,18 @@ async fn test_hash_delimiters_prevent_collision() {
 
     assert_ne!(hash1, hash2);
 }
+
+#[tokio::test]
+async fn test_startup_detects_corrupted_journal_line() {
+    use std::io::Write;
+    let tmp_file = NamedTempFile::new().unwrap();
+    {
+        let mut file = std::fs::File::create(tmp_file.path()).unwrap();
+        writeln!(file, "MALFORMED_NON_JSON_CORRUPTED_LINE").unwrap();
+    }
+
+    let journal = JournalStore::new(tmp_file.path());
+    let report = journal.verify_integrity().await;
+    assert!(!report.valid);
+    assert!(report.message.contains("corrupted or truncated line"));
+}

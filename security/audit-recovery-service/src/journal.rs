@@ -16,6 +16,7 @@ pub const GENESIS_HASH: &str = "000000000000000000000000000000000000000000000000
 pub struct JournalStore {
     file_path: PathBuf,
     state: Arc<RwLock<Vec<AuditEntry>>>,
+    corrupted_lines_count: Arc<RwLock<usize>>,
 }
 
 impl JournalStore {
@@ -26,12 +27,27 @@ impl JournalStore {
         }
 
         let mut entries = Vec::new();
+        let mut corrupted_count = 0;
         if file_path.exists() {
             if let Ok(file) = File::open(&file_path) {
                 let reader = BufReader::new(file);
-                for line in reader.lines().flatten() {
-                    if let Ok(entry) = serde_json::from_str::<AuditEntry>(&line) {
-                        entries.push(entry);
+                for (idx, line_res) in reader.lines().enumerate() {
+                    if let Ok(line) = line_res {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        match serde_json::from_str::<AuditEntry>(&line) {
+                            Ok(entry) => entries.push(entry),
+                            Err(e) => {
+                                corrupted_count += 1;
+                                tracing::error!(
+                                    "Corrupted or truncated line #{} in audit journal {:?}: {}",
+                                    idx + 1,
+                                    file_path,
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -40,6 +56,7 @@ impl JournalStore {
         Self {
             file_path,
             state: Arc::new(RwLock::new(entries)),
+            corrupted_lines_count: Arc::new(RwLock::new(corrupted_count)),
         }
     }
 
@@ -166,7 +183,21 @@ impl JournalStore {
     }
 
     pub async fn verify_integrity(&self) -> IntegrityReport {
+        let corrupted_count = *self.corrupted_lines_count.read().await;
         let entries = self.state.read().await;
+
+        if corrupted_count > 0 {
+            return IntegrityReport {
+                valid: false,
+                total_entries: entries.len(),
+                corrupted_entry_id: None,
+                message: format!(
+                    "Journal file contains {} corrupted or truncated line(s) on disk.",
+                    corrupted_count
+                ),
+            };
+        }
+
         let mut expected_prev_hash = GENESIS_HASH.to_string();
 
         for entry in entries.iter() {
