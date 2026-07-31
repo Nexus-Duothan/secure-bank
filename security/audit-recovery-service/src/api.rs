@@ -69,12 +69,23 @@ async fn verify_journal(State(state): State<AppState>) -> Json<IntegrityReport> 
 async fn replay_service_state(
     State(state): State<AppState>,
     Path(service_name): Path<String>,
-) -> Json<Vec<AuditEntry>> {
+) -> Result<Json<Vec<AuditEntry>>, (StatusCode, Json<serde_json::Value>)> {
+    let report = state.journal.verify_integrity().await;
+    if !report.valid {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "Cannot replay state from tampered or corrupted audit journal",
+                "integrity_report": report
+            })),
+        ));
+    }
+
     let replayed = state
         .journal
         .filter_entries(Some(&service_name), None, None)
         .await;
-    Json(replayed)
+    Ok(Json(replayed))
 }
 
 async fn get_anomalies(State(state): State<AppState>) -> Json<Vec<AnomalyReport>> {
