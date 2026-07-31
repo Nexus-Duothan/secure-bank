@@ -53,15 +53,24 @@ impl JournalStore {
         payload: &serde_json::Value,
     ) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(prev_hash.as_bytes());
-        hasher.update(id.as_bytes());
-        hasher.update(timestamp.to_string().as_bytes());
-        hasher.update(service_name.as_bytes());
-        hasher.update(event_type.as_bytes());
+        hasher.update(format!("{}:{}", prev_hash.len(), prev_hash).as_bytes());
+        hasher.update(b"\0");
+        hasher.update(format!("{}:{}", id.len(), id).as_bytes());
+        hasher.update(b"\0");
+        hasher.update(format!("{}:{}", timestamp.to_string().len(), timestamp).as_bytes());
+        hasher.update(b"\0");
+        hasher.update(format!("{}:{}", service_name.len(), service_name).as_bytes());
+        hasher.update(b"\0");
+        hasher.update(format!("{}:{}", event_type.len(), event_type).as_bytes());
+        hasher.update(b"\0");
         if let Some(uid) = user_id {
-            hasher.update(uid.as_bytes());
+            hasher.update(format!("{}:{}", uid.len(), uid).as_bytes());
+        } else {
+            hasher.update(b"0:");
         }
-        hasher.update(payload.to_string().as_bytes());
+        hasher.update(b"\0");
+        let payload_str = payload.to_string();
+        hasher.update(format!("{}:{}", payload_str.len(), payload_str).as_bytes());
         hex::encode(hasher.finalize())
     }
 

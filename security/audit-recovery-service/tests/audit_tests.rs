@@ -97,3 +97,28 @@ async fn test_anomaly_detection_failed_logins() {
     assert_eq!(anomalies[0].risk_score, 95);
     assert_eq!(anomalies[0].action_taken, "TEMPORARY_ACCOUNT_HOLD");
 }
+
+#[tokio::test]
+async fn test_hash_delimiters_prevent_collision() {
+    let payload = serde_json::json!({});
+    let hash1 = JournalStore::compute_entry_hash(
+        GENESIS_HASH,
+        "id-1",
+        1000,
+        "AB",
+        "C",
+        Some("user-1"),
+        &payload,
+    );
+    let hash2 = JournalStore::compute_entry_hash(
+        GENESIS_HASH,
+        "id-1",
+        1000,
+        "A",
+        "BC",
+        Some("user-1"),
+        &payload,
+    );
+
+    assert_ne!(hash1, hash2);
+}
