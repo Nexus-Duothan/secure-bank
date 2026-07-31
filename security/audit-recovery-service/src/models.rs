@@ -30,9 +30,12 @@ pub struct IntegrityReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnomalyReport {
+    pub id: String,
     pub user_id: String,
     pub event_count: usize,
     pub risk_score: u32,
     pub reason: String,
     pub action_taken: String,
+    pub status: String,
+    pub detection_timestamp: u64,
 }

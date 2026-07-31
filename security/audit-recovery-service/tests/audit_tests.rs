@@ -101,6 +101,7 @@ async fn test_anomaly_detection_failed_logins() {
     assert_eq!(anomalies[0].user_id, "attacker-999");
     assert_eq!(anomalies[0].risk_score, 95);
     assert_eq!(anomalies[0].action_taken, "TEMPORARY_ACCOUNT_HOLD");
+    assert_eq!(anomalies[0].status, "ACTIVE");
 }
 
 #[tokio::test]
