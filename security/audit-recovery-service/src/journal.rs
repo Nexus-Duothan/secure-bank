@@ -147,6 +147,15 @@ impl JournalStore {
         Ok(entry)
     }
 
+    pub async fn with_entries<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[AuditEntry]) -> R,
+    {
+        let entries = self.state.read().await;
+        f(&entries)
+    }
+
+    #[allow(dead_code)]
     pub async fn get_all_entries(&self) -> Vec<AuditEntry> {
         self.state.read().await.clone()
     }
@@ -156,8 +165,13 @@ impl JournalStore {
         service_name: Option<&str>,
         user_id: Option<&str>,
         event_type: Option<&str>,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Vec<AuditEntry> {
         let entries = self.state.read().await;
+        let skip_count = offset.unwrap_or(0);
+        let max_take = limit.unwrap_or(100);
+
         entries
             .iter()
             .filter(|e| {
@@ -178,6 +192,8 @@ impl JournalStore {
                 }
                 true
             })
+            .skip(skip_count)
+            .take(max_take)
             .cloned()
             .collect()
     }

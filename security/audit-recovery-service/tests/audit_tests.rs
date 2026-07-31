@@ -67,13 +67,13 @@ async fn test_service_state_replay() {
         .unwrap();
 
     let auth_events = journal
-        .filter_entries(Some("auth-service"), None, None)
+        .filter_entries(Some("auth-service"), None, None, None, None)
         .await;
     assert_eq!(auth_events.len(), 1);
     assert_eq!(auth_events[0].service_name, "auth-service");
 
     let transfer_events = journal
-        .filter_entries(Some("transfer-service"), None, None)
+        .filter_entries(Some("transfer-service"), None, None, None, None)
         .await;
     assert_eq!(transfer_events.len(), 1);
     assert_eq!(transfer_events[0].service_name, "transfer-service");
@@ -142,4 +142,46 @@ async fn test_startup_detects_corrupted_journal_line() {
     let report = journal.verify_integrity().await;
     assert!(!report.valid);
     assert!(report.message.contains("corrupted or truncated line"));
+}
+
+#[tokio::test]
+async fn test_api_auth_middleware_and_pagination() {
+    use audit_recovery_service::api::{create_router, AppState, DEFAULT_API_KEY};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let tmp_file = NamedTempFile::new().unwrap();
+    let journal = JournalStore::new(tmp_file.path());
+
+    for i in 0..5 {
+        journal
+            .append_entry(CreateAuditEntryRequest {
+                service_name: "auth-service".to_string(),
+                event_type: "LOGIN_ATTEMPT".to_string(),
+                user_id: Some(format!("user-{}", i)),
+                payload: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+    }
+
+    let app = create_router(AppState { journal });
+
+    let req = Request::builder()
+        .uri("/api/v1/audit/entries")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let req = Request::builder()
+        .uri("/api/v1/audit/entries?limit=2")
+        .header("X-Internal-Service-Key", DEFAULT_API_KEY)
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }

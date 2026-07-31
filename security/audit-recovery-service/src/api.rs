@@ -2,12 +2,16 @@ use crate::anomaly::AnomalyEngine;
 use crate::journal::JournalStore;
 use crate::models::{AnomalyReport, AuditEntry, CreateAuditEntryRequest, IntegrityReport};
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::{Path, Query, Request, State},
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
+
+pub const DEFAULT_API_KEY: &str = "securebank_audit_internal_secret_key_2026";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -19,6 +23,38 @@ pub struct FilterQuery {
     pub service_name: Option<String>,
     pub user_id: Option<String>,
     pub event_type: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+async fn auth_middleware(
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let expected_key =
+        std::env::var("AUDIT_SERVICE_API_KEY").unwrap_or_else(|_| DEFAULT_API_KEY.to_string());
+
+    let provided_key = headers
+        .get("X-Internal-Service-Key")
+        .and_then(|v| v.to_str().ok())
+        .or_else(|| {
+            headers
+                .get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+        });
+
+    match provided_key {
+        Some(key) if key == expected_key => Ok(next.run(request).await),
+        _ => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "Unauthorized access to internal audit service API",
+                "message": "Missing or invalid X-Internal-Service-Key header or Bearer token"
+            })),
+        )),
+    }
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -30,6 +66,7 @@ pub fn create_router(state: AppState) -> Router {
             post(replay_service_state),
         )
         .route("/api/v1/audit/anomalies", get(get_anomalies))
+        .route_layer(middleware::from_fn(auth_middleware))
         .with_state(state)
 }
 
@@ -56,6 +93,8 @@ async fn get_entries(
             query.service_name.as_deref(),
             query.user_id.as_deref(),
             query.event_type.as_deref(),
+            query.limit,
+            query.offset,
         )
         .await;
     Json(entries)
@@ -83,7 +122,7 @@ async fn replay_service_state(
 
     let replayed = state
         .journal
-        .filter_entries(Some(&service_name), None, None)
+        .filter_entries(Some(&service_name), None, None, None, None)
         .await;
     Ok(Json(replayed))
 }

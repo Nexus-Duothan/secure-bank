@@ -19,12 +19,15 @@ async fn main() {
     let state = AppState { journal };
     let app = create_router(state);
 
+    let host = std::env::var("BIND_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port: u16 = std::env::var("PORT")
         .unwrap_or_else(|_| "8089".to_string())
         .parse()
         .unwrap_or(8089);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr: SocketAddr = format!("{}:{}", host, port)
+        .parse()
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], port)));
     tracing::info!("Audit & Recovery Service listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
