@@ -36,9 +36,14 @@ pub fn create_router(state: AppState) -> Router {
 async fn create_entry(
     State(state): State<AppState>,
     Json(payload): Json<CreateAuditEntryRequest>,
-) -> (StatusCode, Json<AuditEntry>) {
-    let entry = state.journal.append_entry(payload).await;
-    (StatusCode::CREATED, Json(entry))
+) -> Result<(StatusCode, Json<AuditEntry>), (StatusCode, String)> {
+    match state.journal.append_entry(payload).await {
+        Ok(entry) => Ok((StatusCode::CREATED, Json(entry))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to persist audit entry to storage: {}", e),
+        )),
+    }
 }
 
 async fn get_entries(

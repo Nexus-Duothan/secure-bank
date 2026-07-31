@@ -16,7 +16,8 @@ async fn test_audit_entry_creation_and_hash_chaining() {
             user_id: Some("user-1001".to_string()),
             payload: serde_json::json!({ "email": "user1@securebank.com" }),
         })
-        .await;
+        .await
+        .unwrap();
 
     assert_eq!(entry1.prev_hash, GENESIS_HASH);
     assert!(!entry1.hash.is_empty());
@@ -29,7 +30,8 @@ async fn test_audit_entry_creation_and_hash_chaining() {
             user_id: Some("user-1001".to_string()),
             payload: serde_json::json!({ "account_type": "CHECKING" }),
         })
-        .await;
+        .await
+        .unwrap();
 
     assert_eq!(entry2.prev_hash, entry1.hash);
 
@@ -51,7 +53,8 @@ async fn test_service_state_replay() {
             user_id: Some("user-1".to_string()),
             payload: serde_json::json!({}),
         })
-        .await;
+        .await
+        .unwrap();
 
     journal
         .append_entry(CreateAuditEntryRequest {
@@ -60,7 +63,8 @@ async fn test_service_state_replay() {
             user_id: Some("user-1".to_string()),
             payload: serde_json::json!({ "amount": 500 }),
         })
-        .await;
+        .await
+        .unwrap();
 
     let auth_events = journal
         .filter_entries(Some("auth-service"), None, None)
@@ -88,7 +92,8 @@ async fn test_anomaly_detection_failed_logins() {
                 user_id: Some("attacker-999".to_string()),
                 payload: serde_json::json!({ "reason": "invalid_password" }),
             })
-            .await;
+            .await
+            .unwrap();
     }
 
     let anomalies = AnomalyEngine::analyze(&journal).await;

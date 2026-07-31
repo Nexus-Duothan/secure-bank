@@ -2,8 +2,8 @@ use crate::models::{AuditEntry, CreateAuditEntryRequest, IntegrityReport};
 use hex;
 use serde_json;
 use sha2::{Digest, Sha256};
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -74,7 +74,10 @@ impl JournalStore {
         hex::encode(hasher.finalize())
     }
 
-    pub async fn append_entry(&self, req: CreateAuditEntryRequest) -> AuditEntry {
+    pub async fn append_entry(
+        &self,
+        req: CreateAuditEntryRequest,
+    ) -> Result<AuditEntry, std::io::Error> {
         let mut entries = self.state.write().await;
         let prev_hash = match entries.last() {
             Some(last) => last.hash.clone(),
@@ -108,21 +111,23 @@ impl JournalStore {
             hash,
         };
 
-        // Append to in-memory state
-        entries.push(entry.clone());
+        let json_line = serde_json::to_string(&entry)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        // Append to disk storage
-        if let Ok(mut file) = OpenOptions::new()
+        let mut file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.file_path)
-        {
-            if let Ok(json_line) = serde_json::to_string(&entry) {
-                let _ = writeln!(file, "{}", json_line);
-            }
-        }
+            .await?;
 
-        entry
+        use tokio::io::AsyncWriteExt;
+        file.write_all(format!("{}\n", json_line).as_bytes())
+            .await?;
+        file.flush().await?;
+
+        entries.push(entry.clone());
+
+        Ok(entry)
     }
 
     pub async fn get_all_entries(&self) -> Vec<AuditEntry> {
