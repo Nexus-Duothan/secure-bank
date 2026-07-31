@@ -5,5 +5,5 @@
   "trailingComma": "es5",
   "printWidth": 100,
   "bracketSpacing": true,
-  "plugins": ["prettier-plugin-java", "prettier-plugin-sql"]
+  "plugins": ["prettier-plugin-java"]
 }

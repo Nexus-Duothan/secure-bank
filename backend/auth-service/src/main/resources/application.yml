@@ -15,6 +15,7 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    table: flyway_schema_history_auth
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
