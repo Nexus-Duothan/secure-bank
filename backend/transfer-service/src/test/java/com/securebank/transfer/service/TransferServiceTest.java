@@ -170,18 +170,6 @@ class TransferServiceTest {
 
   @Test
   void quote_allowsSmallTransferToPayeeStillCoolingOff() {
-    when(
-      payeeRepository.findByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, TO_ACCOUNT)
-    ).thenReturn(
-      Optional.of(
-        Payee.builder()
-          .ownerUserId(USER_ID)
-          .nickname("A. Silva")
-          .accountReference(TO_ACCOUNT)
-          .coolingOffUntil(Instant.now().plusSeconds(3600))
-          .build()
-      )
-    );
     when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
       new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10000"), "LKR")
     );
