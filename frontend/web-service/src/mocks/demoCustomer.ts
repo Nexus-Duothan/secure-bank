@@ -1,6 +1,11 @@
 import type { Notification } from '../api/notificationService';
-import type { Account, AccountDetail, Transaction } from '../api/accountsService';
-import type { AuditTransaction } from '../api/auditService';
+import type {
+  Account,
+  AccountActivity,
+  AccountDetail,
+  AccountProduct,
+  Transaction,
+} from '../api/accountsService';
 import type { LoanDetail } from '../api/lendingService';
 import type { UserProfile } from '../api/userService';
 
@@ -26,8 +31,6 @@ export const DEMO_PROFILE: UserProfile = {
   role: 'CUSTOMER',
   status: 'ACTIVE',
   idVerified: true,
-  frozen: false,
-  freezeReason: null,
   notificationPreferences: {
     email: true,
     sms: true,
@@ -69,28 +72,143 @@ export const DEMO_PRIMARY_ACCOUNT: Account = {
   nickname: 'Everyday Current',
   accountType: 'CURRENT',
   lastFourDigits: '67',
+  accountNumber: '1234 5678 90067',
   balance: 48231.76,
   currency: 'LKR',
   monthlyChangePercent: 2.4,
   verifiedLabel: '2m ago',
+  status: 'Active - Verified',
+  frozen: false,
+  freezeReason: null,
 };
 
-export const DEMO_SECONDARY_ACCOUNT = {
+/** Mirrors the bank's product catalogue in accounts-service. */
+export const DEMO_ACCOUNT_PRODUCTS: AccountProduct[] = [
+  {
+    code: 'SAV-EVERYDAY',
+    name: 'Everyday Savings',
+    accountType: 'SAVINGS',
+    description: 'Day to day saving with instant access to your money.',
+    currency: 'LKR',
+    interestRate: 4.5,
+    minimumBalance: 1000,
+    monthlyFee: 0,
+  },
+  {
+    code: 'SAV-SUPER',
+    name: 'Super Saver',
+    accountType: 'SAVINGS',
+    description: 'Our highest everyday rate. Keep the minimum balance to earn it.',
+    currency: 'LKR',
+    interestRate: 7.25,
+    minimumBalance: 25000,
+    monthlyFee: 0,
+  },
+  {
+    code: 'SAV-GOAL',
+    name: 'Goal Savings',
+    accountType: 'SAVINGS',
+    description: 'Build savings toward a personal goal with a competitive interest rate.',
+    currency: 'LKR',
+    interestRate: 6.0,
+    minimumBalance: 1000,
+    monthlyFee: 0,
+  },
+  {
+    code: 'SAV-YOUTH',
+    name: 'Youth Savings',
+    accountType: 'SAVINGS',
+    description: 'For customers under 26. No monthly fee and a low opening balance.',
+    currency: 'LKR',
+    interestRate: 5.0,
+    minimumBalance: 500,
+    monthlyFee: 0,
+  },
+  {
+    code: 'SAV-SENIOR',
+    name: 'Senior Citizen Savings',
+    accountType: 'SAVINGS',
+    description: 'For customers over 60. Our best rate with a small minimum balance.',
+    currency: 'LKR',
+    interestRate: 8.0,
+    minimumBalance: 10000,
+    monthlyFee: 0,
+  },
+  {
+    code: 'CUR-EVERYDAY',
+    name: 'Everyday Current',
+    accountType: 'CURRENT',
+    description: 'For daily spending, salary, and bill payments.',
+    currency: 'LKR',
+    interestRate: 0,
+    minimumBalance: 5000,
+    monthlyFee: 350,
+  },
+  {
+    code: 'CUR-BUSINESS',
+    name: 'Business Current',
+    accountType: 'CURRENT',
+    description: 'For small businesses, with higher daily transfer limits.',
+    currency: 'LKR',
+    interestRate: 0,
+    minimumBalance: 25000,
+    monthlyFee: 1200,
+  },
+  {
+    code: 'CUR-PREMIER',
+    name: 'Premier Current',
+    accountType: 'CURRENT',
+    description: 'Earns interest on your balance. No monthly fee.',
+    currency: 'LKR',
+    interestRate: 1.5,
+    minimumBalance: 100000,
+    monthlyFee: 0,
+  },
+];
+
+export const DEMO_SECONDARY_ACCOUNT: Account = {
   id: 'acc-demo-savings',
-  label: 'Savings Account - LKR 128,900.00',
+  nickname: 'Goal Savings',
+  accountType: 'SAVINGS',
+  lastFourDigits: '7890',
+  accountNumber: '1234567890',
+  balance: 128900,
+  currency: 'LKR',
+  monthlyChangePercent: 1.1,
+  verifiedLabel: '1m ago',
+  status: 'Active - Verified',
+  frozen: false,
+  freezeReason: null,
 };
 
 export const DEMO_ACCOUNT_DETAIL: AccountDetail = {
   id: DEMO_PRIMARY_ACCOUNT.id,
   nickname: DEMO_PRIMARY_ACCOUNT.nickname,
-  accountTypeLabel: 'Everyday Current',
+  accountTypeLabel: 'Current account',
   currency: DEMO_PRIMARY_ACCOUNT.currency,
   balance: DEMO_PRIMARY_ACCOUNT.balance,
   accountNumber: '1234 5678 90067',
   ifscCode: 'SBLK0007',
   openedOn: '14 Mar 2024',
   homeBranch: 'Kandy City',
+  ownershipLabel: 'Individual account',
   status: 'Active - Verified',
+  frozen: false,
+  freezeReason: null,
+  cards: [
+    {
+      id: 'card-debit-primary',
+      accountId: DEMO_PRIMARY_ACCOUNT.id,
+      cardType: 'DEBIT',
+      productName: 'Everyday Debit',
+      maskedNumber: '4910 12** **** 0067',
+      cardholderName: DEMO_CUSTOMER.fullName.toUpperCase(),
+      expiryDate: '01/29',
+      scheme: 'VISA',
+      status: 'Active',
+      jointAccountCard: false,
+    },
+  ],
 };
 
 export const DEMO_RECENT_TRANSACTIONS: Transaction[] = [
@@ -128,11 +246,12 @@ export const DEMO_RECENT_TRANSACTIONS: Transaction[] = [
   },
 ];
 
-export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
+export const DEMO_ACCOUNT_ACTIVITY: AccountActivity[] = [
   {
     id: 'txn-demo-001',
     merchant: 'Ceylon Electricity Board',
     category: 'Bill payment',
+    transactionType: 'BILL_PAYMENT',
     location: 'Kandy',
     amount: -84.2,
     currency: 'LKR',
@@ -145,6 +264,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-002',
     merchant: 'Salary Deposit',
     category: 'Income',
+    transactionType: 'INCOME',
     location: 'SecureBank Payroll',
     amount: 3200.0,
     currency: 'LKR',
@@ -157,6 +277,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-003',
     merchant: "Kumar's Grocers",
     category: 'Card payment',
+    transactionType: 'CARD_PAYMENT',
     location: 'Kandy',
     amount: -46.75,
     currency: 'LKR',
@@ -169,6 +290,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-004',
     merchant: 'Transfer to A. Silva',
     category: 'Outgoing transfer',
+    transactionType: 'TRANSFER',
     location: 'SecureBank Transfer',
     amount: -150.0,
     currency: 'LKR',
@@ -181,18 +303,20 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-005',
     merchant: 'Highway Fuel Stop',
     category: 'Transport',
+    transactionType: 'TRANSPORT',
     location: 'Kadawatha',
     amount: -18.4,
     currency: 'LKR',
     timestamp: '2026-07-18T11:40:00',
     dateGroupLabel: '18 Jul 2026',
     journalId: 'J-93958',
-    flagged: false,
+    flagged: true,
   },
   {
     id: 'txn-demo-006',
     merchant: 'Mobile Reload',
     category: 'Bills',
+    transactionType: 'BILL_PAYMENT',
     location: 'Dialog',
     amount: -12.0,
     currency: 'LKR',
@@ -205,6 +329,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-007',
     merchant: 'Rent Collection',
     category: 'Income',
+    transactionType: 'INCOME',
     location: 'Standing order',
     amount: 950.0,
     currency: 'LKR',
@@ -217,6 +342,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-008',
     merchant: 'Pharmacy Care',
     category: 'Health',
+    transactionType: 'HEALTH',
     location: 'Kandy',
     amount: -36.9,
     currency: 'LKR',
@@ -229,6 +355,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-009',
     merchant: 'Dialog Broadband',
     category: 'Internet',
+    transactionType: 'INTERNET',
     location: 'Online',
     amount: -42.5,
     currency: 'LKR',
@@ -241,6 +368,7 @@ export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
     id: 'txn-demo-010',
     merchant: 'Bookshop',
     category: 'Education',
+    transactionType: 'EDUCATION',
     location: 'Peradeniya',
     amount: -22.1,
     currency: 'LKR',
@@ -307,10 +435,38 @@ export const DEMO_LOAN_DETAIL: LoanDetail = {
   autoPayAccountName: 'Everyday Current',
 };
 
-export const buildDemoAccountDetail = (id: string): AccountDetail => ({
-  ...DEMO_ACCOUNT_DETAIL,
-  id,
-});
+export const buildDemoAccountDetail = (id: string): AccountDetail =>
+  id === DEMO_SECONDARY_ACCOUNT.id
+    ? {
+        id,
+        nickname: DEMO_SECONDARY_ACCOUNT.nickname,
+        accountTypeLabel: 'Savings account',
+        currency: DEMO_SECONDARY_ACCOUNT.currency,
+        balance: DEMO_SECONDARY_ACCOUNT.balance,
+        accountNumber: DEMO_SECONDARY_ACCOUNT.accountNumber ?? '1234567890',
+        ifscCode: 'SBLK0012',
+        openedOn: '08 Sep 2022',
+        homeBranch: 'Kandy City',
+        ownershipLabel: 'Joint account',
+        status: DEMO_SECONDARY_ACCOUNT.status,
+        frozen: DEMO_SECONDARY_ACCOUNT.frozen,
+        freezeReason: DEMO_SECONDARY_ACCOUNT.freezeReason,
+        cards: [
+          {
+            id: 'card-debit-joint',
+            accountId: id,
+            cardType: 'DEBIT',
+            productName: 'Shared Savings Debit',
+            maskedNumber: '4910 12** **** 7890',
+            cardholderName: 'KAVEESHA K. / JOINT',
+            expiryDate: '06/30',
+            scheme: 'VISA',
+            status: 'Active',
+            jointAccountCard: true,
+          },
+        ],
+      }
+    : { ...DEMO_ACCOUNT_DETAIL, id };
 
 export const buildDemoLoanDetail = (id: string): LoanDetail => ({
   ...DEMO_LOAN_DETAIL,

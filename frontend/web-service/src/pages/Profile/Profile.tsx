@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Avatar,
   Button,
@@ -32,6 +32,7 @@ import userService, {
 } from '../../api/userService';
 import accountsService, { type Account } from '../../api/accountsService';
 import tokenStorage from '../../api/tokenStorage';
+import sessionUser from '../../api/sessionUser';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
 import { DEMO_PRIMARY_ACCOUNT, DEMO_PROFILE } from '../../mocks/demoCustomer';
@@ -47,9 +48,8 @@ const PROFILE_PANELS = ['personal', 'notifications', 'language', 'devices', 'pas
 
 type ProfilePanel = (typeof PROFILE_PANELS)[number] | typeof OVERVIEW_PANEL;
 
-interface OtpDialogState {
-  challenge: OtpChallenge;
-  successMessage: string;
+interface ProfileLocationState {
+  otpSuccessMessage?: string;
 }
 
 interface SettingsRowItem {
@@ -99,13 +99,6 @@ const formatNotificationSummary = (preferences: NotificationPreferences) => {
 };
 
 const formatDeviceCount = (count: number) => `${count} linked`;
-
-const formatStatusLabel = (status: UserProfile['status']) =>
-  status
-    .toLowerCase()
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 
 const formatLastVerifiedSession = (devices: UserDevice[]) => {
   const latest = devices
@@ -249,6 +242,7 @@ const Profile: React.FC = () => {
   const { token } = theme.useToken();
   const [messageApi, contextHolder] = message.useMessage();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [personalForm] = Form.useForm<ProfileUpdatePayload>();
   const [notificationForm] = Form.useForm<NotificationPreferences>();
@@ -258,14 +252,12 @@ const Profile: React.FC = () => {
   const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [otpState, setOtpState] = useState<OtpDialogState | null>(null);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSubmitting, setOtpSubmitting] = useState(false);
   const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
   const [passwordResetSubmitting, setPasswordResetSubmitting] = useState(false);
 
   const activePanel = getPanelFromSearch(searchParams.get('panel'));
@@ -291,6 +283,16 @@ const Profile: React.FC = () => {
       message.includes('401')
     );
   }, [profileLoadError]);
+
+  useEffect(() => {
+    const routeState = (location.state as ProfileLocationState | null) ?? null;
+    if (!routeState?.otpSuccessMessage) {
+      return;
+    }
+
+    messageApi.success(routeState.otpSuccessMessage);
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [location.pathname, location.search, location.state, messageApi, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -339,29 +341,26 @@ const Profile: React.FC = () => {
     accountsService
       .getPrimaryAccount()
       .then((data) => {
-        if (!cancelled) setAccount(data);
+        if (!cancelled) {
+          setAccount(data);
+          setAccountLoadError(null);
+        }
       })
-      .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
+      .catch((error) => {
+        if (!cancelled) {
+          setAccountLoadError(
+            getApiErrorMessage(
+              error,
+              'Live account details are unavailable right now. This screen is showing demo account data.'
+            )
+          );
+        }
       });
 
     return () => {
       cancelled = true;
     };
   }, [languageForm, notificationForm, personalForm]);
-
-  const syncForms = (nextProfile: UserProfile) => {
-    personalForm.setFieldsValue({
-      fullName: nextProfile.fullName,
-      email: nextProfile.email,
-      phoneNumber: nextProfile.phoneNumber,
-      addressLine: nextProfile.addressLine,
-      city: nextProfile.city,
-      country: nextProfile.country,
-    });
-    notificationForm.setFieldsValue(nextProfile.notificationPreferences);
-    languageForm.setFieldsValue({ language: nextProfile.language });
-  };
 
   const handleProfilePhotoChange = async (file?: File) => {
     if (!file) {
@@ -399,60 +398,34 @@ const Profile: React.FC = () => {
     setSearchParams({ panel });
   };
 
-  const openOtpDialog = (challenge: OtpChallenge, successMessage: string) => {
-    setOtpCode(challenge.demoCode ?? '');
-    setOtpState({ challenge, successMessage });
-  };
-
   const requestOtpFlow = async (
     action: Promise<OtpChallenge>,
     successMessage: string,
-    afterChallenge?: () => void
+    afterChallenge?: () => void,
+    flow: 'profile-change' | 'account-change' = 'profile-change'
   ) => {
     setSubmitting(true);
     try {
       const challenge = await action;
       afterChallenge?.();
-      openOtpDialog(challenge, successMessage);
+      setSubmitting(false);
+      setDeviceActionId(null);
+      const returnTo =
+        activePanel === OVERVIEW_PANEL ? '/profile' : `/profile?panel=${activePanel}`;
+      navigate('/verify-otp', {
+        state: {
+          flow,
+          challenge,
+          successMessage,
+          returnTo,
+        },
+      });
     } catch (error) {
       setSubmitting(false);
       setDeviceActionId(null);
       messageApi.error(
         getApiErrorMessage(error, 'We could not start the verification step. Please try again.')
       );
-    }
-  };
-
-  const handleOtpConfirm = async () => {
-    if (!otpState) return;
-    if (otpCode.length !== 6) {
-      messageApi.error('Please enter the 6-digit OTP.');
-      return;
-    }
-
-    setOtpSubmitting(true);
-    try {
-      const updatedProfile = await userService.confirmChange(
-        otpState.challenge.changeRequestId,
-        otpCode
-      );
-      setProfile(updatedProfile);
-      syncForms(updatedProfile);
-      setOtpState(null);
-      setOtpCode('');
-      setSubmitting(false);
-      setDeviceActionId(null);
-      freezeForm.resetFields();
-      messageApi.success(otpState.successMessage);
-    } catch (error) {
-      messageApi.error(
-        getApiErrorMessage(
-          error,
-          'Could not confirm the OTP. Please review the code and try again.'
-        )
-      );
-    } finally {
-      setOtpSubmitting(false);
     }
   };
 
@@ -539,31 +512,28 @@ const Profile: React.FC = () => {
   const handleFreezeSubmit = async () => {
     const values = await freezeForm.validateFields();
     await requestOtpFlow(
-      userService.requestAccountFreeze(values.reason?.trim() || undefined),
+      accountsService.requestAccountFreeze(account.id, values.reason?.trim() || undefined),
       'Your account has been frozen.',
-      () => setFreezeModalOpen(false)
+      () => {
+        setFreezeModalOpen(false);
+        freezeForm.resetFields();
+      },
+      'account-change'
     );
   };
 
   const handleFreezeToggle = async () => {
-    if (profile.frozen) {
+    if (account.frozen) {
       await requestOtpFlow(
-        userService.requestAccountUnfreeze(),
-        'Your account has been reactivated.'
+        accountsService.requestAccountUnfreeze(account.id),
+        'Your account has been reactivated.',
+        undefined,
+        'account-change'
       );
       return;
     }
 
     setFreezeModalOpen(true);
-  };
-
-  const handleDownloadMyData = () => {
-    if (profileLoadError) {
-      messageApi.error('Data export is unavailable while `user-service` is offline.');
-      return;
-    }
-
-    messageApi.success('Your secure data export request has been recorded.');
   };
 
   const handleChangePasswordRequest = async () => {
@@ -583,6 +553,7 @@ const Profile: React.FC = () => {
 
   const handleReauthenticate = () => {
     tokenStorage.clear();
+    sessionUser.clear();
     navigate('/login', { replace: true });
   };
 
@@ -594,6 +565,7 @@ const Profile: React.FC = () => {
       // If the backend session revoke fails, still clear local tokens.
     } finally {
       tokenStorage.clear();
+      sessionUser.clear();
       navigate('/login', { replace: true });
     }
   };
@@ -644,20 +616,9 @@ const Profile: React.FC = () => {
         },
         {
           key: 'freeze',
-          label: profile.frozen ? 'Reactivate account' : 'Freeze account',
-          trailing: profile.frozen ? 'Reactivate' : 'Protect',
-          onClick: profileLoadError ? undefined : handleFreezeToggle,
-        },
-      ],
-    },
-    {
-      label: 'Data & privacy',
-      rows: [
-        {
-          key: 'download',
-          label: 'Download my data',
-          trailing: 'Request',
-          onClick: handleDownloadMyData,
+          label: account.frozen ? 'Reactivate account' : 'Freeze account',
+          trailing: account.frozen ? 'Reactivate' : 'Protect',
+          onClick: accountLoadError ? undefined : handleFreezeToggle,
         },
       ],
     },
@@ -694,7 +655,7 @@ const Profile: React.FC = () => {
               <Text style={{ color: '#AD6800', fontWeight: 500 }}>
                 {sessionExpired
                   ? 'Your session has expired. Please sign in again to continue secure changes.'
-                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+                  : `${profileLoadError} Profile updates are disabled until \`user-service\` is running.`}
               </Text>
               {sessionExpired && (
                 <Button
@@ -1059,7 +1020,7 @@ const Profile: React.FC = () => {
               <Text style={{ color: '#AD6800', fontWeight: 500 }}>
                 {sessionExpired
                   ? 'Your session has expired. Please sign in again to continue secure changes.'
-                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+                  : `${profileLoadError} Profile updates are disabled until \`user-service\` is running.`}
               </Text>
               {sessionExpired && (
                 <Button
@@ -1071,6 +1032,21 @@ const Profile: React.FC = () => {
                 </Button>
               )}
             </Flex>
+          </div>
+        )}
+        {accountLoadError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF7E6',
+              border: '1px solid #FFD591',
+            }}
+          >
+            <Text style={{ color: '#AD6800', fontWeight: 500 }}>
+              {`${accountLoadError} Account controls are disabled until \`accounts-service\` is running.`}
+            </Text>
           </div>
         )}
         <Flex align="center" gap={16}>
@@ -1105,7 +1081,7 @@ const Profile: React.FC = () => {
 
         <TrustIndicator
           text={
-            profile.frozen
+            account.frozen
               ? 'This account is temporarily frozen for your protection.'
               : profile.idVerified
                 ? 'Your identity is verified and protected.'
@@ -1136,7 +1112,7 @@ const Profile: React.FC = () => {
           <Flex vertical gap={16}>
             <SecurityStatusRow
               label="Account status"
-              value={profile.frozen ? 'Frozen' : formatStatusLabel(profile.status)}
+              value={account.frozen ? 'Frozen' : account.status}
             />
             <SecurityStatusRow label="Two-factor authentication" value="Active" />
             <SecurityStatusRow
@@ -1244,58 +1220,6 @@ const Profile: React.FC = () => {
             <Input.TextArea rows={4} maxLength={180} />
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        open={Boolean(otpState)}
-        onCancel={() => {
-          if (!otpSubmitting) {
-            setOtpState(null);
-            setOtpCode('');
-            setSubmitting(false);
-            setDeviceActionId(null);
-          }
-        }}
-        onOk={handleOtpConfirm}
-        okText="Verify"
-        confirmLoading={otpSubmitting}
-        title="Enter OTP"
-      >
-        <Text style={{ display: 'block', marginBottom: 8, color: token.colorTextSecondary }}>
-          {otpState?.challenge.message}
-        </Text>
-        <Text
-          style={{
-            display: 'block',
-            marginBottom: 16,
-            fontSize: 13,
-            color: token.colorTextTertiary,
-          }}
-        >
-          Delivery target: {otpState?.challenge.deliveryTarget}
-        </Text>
-        {otpState?.challenge.demoCode && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: '10px 12px',
-              borderRadius: 12,
-              background: TEAL_TINT,
-            }}
-          >
-            <Text style={{ fontSize: 13, color: token.colorPrimary }}>
-              Demo OTP for local development: {otpState.challenge.demoCode}
-            </Text>
-          </div>
-        )}
-        <Input
-          value={otpCode}
-          onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-          maxLength={6}
-          size="large"
-          placeholder="Enter 6-digit OTP"
-          inputMode="numeric"
-        />
       </Modal>
     </div>
   );

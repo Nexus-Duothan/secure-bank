@@ -1,5 +1,7 @@
 package com.securebank.user.controller;
 
+import com.securebank.user.dto.ConfirmChangeRequest;
+import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.RoleUpdateRequest;
 import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserProfileResponse;
@@ -15,6 +17,10 @@ import org.springframework.web.bind.annotation.*;
 /**
  * Role and status administration (FR-08). Authorisation is enforced in {@link UserService} so the
  * rules hold for any caller of those operations, not only this HTTP surface.
+ *
+ * <p>Role and status changes are high-risk actions (FR-04): they are staged behind a one-time code
+ * sent to the staff member and only applied on {@code /changes/{id}/confirm}. There is no direct
+ * mutation endpoint, so the OTP step cannot be skipped.
  */
 @RestController
 @RequestMapping("/api/v1/users/admin")
@@ -36,21 +42,30 @@ public class AdminUserController {
     return ResponseEntity.ok(userService.getUser(caller, userId));
   }
 
-  @PatchMapping("/{userId}/role")
-  public ResponseEntity<UserProfileResponse> updateRole(
+  @PostMapping("/{userId}/role-change")
+  public ResponseEntity<OtpChallengeResponse> requestRoleChange(
     CallerIdentity caller,
     @PathVariable UUID userId,
     @Valid @RequestBody RoleUpdateRequest request
   ) {
-    return ResponseEntity.ok(userService.updateRole(caller, userId, request));
+    return ResponseEntity.ok(userService.requestRoleChange(caller, userId, request));
   }
 
-  @PatchMapping("/{userId}/status")
-  public ResponseEntity<UserProfileResponse> updateStatus(
+  @PostMapping("/{userId}/status-change")
+  public ResponseEntity<OtpChallengeResponse> requestStatusChange(
     CallerIdentity caller,
     @PathVariable UUID userId,
     @Valid @RequestBody StatusUpdateRequest request
   ) {
-    return ResponseEntity.ok(userService.updateStatus(caller, userId, request));
+    return ResponseEntity.ok(userService.requestStatusChange(caller, userId, request));
+  }
+
+  @PostMapping("/changes/{changeRequestId}/confirm")
+  public ResponseEntity<UserProfileResponse> confirmChange(
+    CallerIdentity caller,
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody ConfirmChangeRequest request
+  ) {
+    return ResponseEntity.ok(userService.confirmAdminChange(caller, changeRequestId, request));
   }
 }

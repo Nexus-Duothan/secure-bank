@@ -3,6 +3,7 @@ package com.securebank.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,7 +11,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securebank.user.config.UserServiceProperties;
 import com.securebank.user.dto.ConfirmChangeRequest;
-import com.securebank.user.dto.FreezeAccountRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.ProfileUpdateRequest;
 import com.securebank.user.dto.RoleUpdateRequest;
@@ -109,7 +109,14 @@ class UserServiceTest {
       assertThat(challenge.demoCode()).hasSize(6).containsOnlyDigits();
       assertThat(stored.getOtpHash()).isNotEqualTo(challenge.demoCode());
       assertThat(otpEncoder.matches(challenge.demoCode(), stored.getOtpHash())).isTrue();
-      assertThat(challenge.deliveryTarget()).isEqualTo("j***e@securebank.lk");
+      assertThat(challenge.deliveryTarget()).isEqualTo("+94***4567");
+      assertThat(challenge.message()).contains("registered mobile number");
+      verify(userSecurityAlertService).sendOtpChallenge(
+        any(UserProfile.class),
+        eq(ChangeRequestType.UPDATE_PROFILE),
+        eq(challenge.demoCode()),
+        eq(stored.getExpiresAt())
+      );
     }
 
     @Test
@@ -231,79 +238,6 @@ class UserServiceTest {
       ).isInstanceOf(ConflictException.class);
 
       verify(pendingUserChangeRepository, never()).save(any());
-    }
-  }
-
-  @Nested
-  @DisplayName("Account freeze and unfreeze (FR-13)")
-  class FreezeControls {
-
-    @Test
-    void freezeRecordsTheReasonAndUnfreezeClearsIt() {
-      UserProfile profile = customer();
-      when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(profile));
-      when(userProfileRepository.save(any())).thenAnswer(call -> call.getArgument(0));
-      when(
-        userDeviceRepository.findByUserProfileIdAndRevokedAtIsNullOrderByLastVerifiedAtDesc(
-          CUSTOMER_ID
-        )
-      ).thenReturn(List.of());
-
-      PendingUserChange freeze = change(
-        ChangeRequestType.FREEZE_ACCOUNT,
-        "{\"reason\":\"Card lost\"}"
-      );
-      when(
-        pendingUserChangeRepository.findByIdAndUserProfileId(freeze.getId(), CUSTOMER_ID)
-      ).thenReturn(Optional.of(freeze));
-
-      UserProfileResponse frozen = userService.confirmChange(
-        caller(CUSTOMER_ID, Role.CUSTOMER),
-        freeze.getId(),
-        new ConfirmChangeRequest(KNOWN_CODE)
-      );
-      assertThat(frozen.frozen()).isTrue();
-      assertThat(frozen.status()).isEqualTo(UserStatus.FROZEN);
-      assertThat(frozen.freezeReason()).isEqualTo("Card lost");
-      assertThat(profile.getFrozenAt()).isNotNull();
-
-      PendingUserChange unfreeze = change(ChangeRequestType.UNFREEZE_ACCOUNT, "{}");
-      when(
-        pendingUserChangeRepository.findByIdAndUserProfileId(unfreeze.getId(), CUSTOMER_ID)
-      ).thenReturn(Optional.of(unfreeze));
-
-      UserProfileResponse active = userService.confirmChange(
-        caller(CUSTOMER_ID, Role.CUSTOMER),
-        unfreeze.getId(),
-        new ConfirmChangeRequest(KNOWN_CODE)
-      );
-      assertThat(active.frozen()).isFalse();
-      assertThat(active.status()).isEqualTo(UserStatus.ACTIVE);
-      assertThat(active.freezeReason()).isNull();
-      assertThat(profile.getFrozenAt()).isNull();
-    }
-
-    @Test
-    void refusesToFreezeAnAlreadyFrozenAccount() {
-      UserProfile profile = customer();
-      profile.setFrozen(true);
-      when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(profile));
-
-      assertThatThrownBy(() ->
-        userService.requestAccountFreeze(
-          caller(CUSTOMER_ID, Role.CUSTOMER),
-          new FreezeAccountRequest("duplicate")
-        )
-      ).isInstanceOf(ConflictException.class);
-    }
-
-    @Test
-    void refusesToUnfreezeAnAccountThatIsNotFrozen() {
-      when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(customer()));
-
-      assertThatThrownBy(() ->
-        userService.requestAccountUnfreeze(caller(CUSTOMER_ID, Role.CUSTOMER))
-      ).isInstanceOf(ConflictException.class);
     }
   }
 

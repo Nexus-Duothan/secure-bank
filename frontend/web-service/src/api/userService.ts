@@ -28,8 +28,6 @@ interface BackendUserProfile {
   role: string;
   status: string;
   idVerified: boolean;
-  frozen: boolean;
-  freezeReason: string | null;
   notificationPreferences: NotificationPreferences;
   linkedDevices: BackendUserDevice[];
 }
@@ -63,8 +61,6 @@ const mapProfile = (profile: BackendUserProfile): UserProfile => ({
   role: profile.role as UserProfile['role'],
   status: profile.status as UserProfile['status'],
   idVerified: profile.idVerified,
-  frozen: profile.frozen,
-  freezeReason: profile.freezeReason,
   notificationPreferences: profile.notificationPreferences,
   linkedDevices: profile.linkedDevices ?? [],
 });
@@ -87,10 +83,6 @@ export const userService = {
     client.post<OtpChallenge>('/me/devices/trust', { deviceId }).then((response) => response.data),
   requestDeviceRevoke: (deviceId: string) =>
     client.post<OtpChallenge>('/me/devices/revoke', { deviceId }).then((response) => response.data),
-  requestAccountFreeze: (reason?: string) =>
-    client.post<OtpChallenge>('/me/freeze', { reason }).then((response) => response.data),
-  requestAccountUnfreeze: () =>
-    client.post<OtpChallenge>('/me/unfreeze').then((response) => response.data),
   confirmChange: (changeRequestId: string, otpCode: string) =>
     client
       .post<BackendUserProfile>(`/me/changes/${changeRequestId}/confirm`, { otpCode })

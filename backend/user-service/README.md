@@ -9,7 +9,6 @@ The **User Service** manages customer profile data, contact preferences, linked 
 - Profile management
 - Notification preference updates
 - Linked device management
-- Freeze and unfreeze actions
 - RBAC directory operations for staff
 
 ---
@@ -63,8 +62,6 @@ Self-service routes live under `/api/v1/users`. Every mutation is staged first a
 | `POST` | `/me/devices/link`                      | Stage a new linked device             |
 | `POST` | `/me/devices/trust`                     | Stage marking a device trusted        |
 | `POST` | `/me/devices/revoke`                    | Stage revoking a device               |
-| `POST` | `/me/freeze`                            | Stage an account freeze               |
-| `POST` | `/me/unfreeze`                          | Stage an account unfreeze             |
 | `POST` | `/me/changes/{changeRequestId}/confirm` | Confirm a staged change with the OTP  |
 
 Administration routes live under `/api/v1/users/admin`.
@@ -99,6 +96,7 @@ When that flag is enabled, the generated code is returned in the challenge respo
 | `securebank.user.otp.ttl`                                    | `PT5M`                  | Challenge lifetime                                  |
 | `securebank.user.otp.max-attempts`                           | `5`                     | Wrong codes before a challenge is burned            |
 | `securebank.user.otp.expose-code`                            | `false`                 | Return the generated OTP in the response            |
+| `securebank.notification.service-url`                        | `http://localhost:8088` | Notification service base URL for OTP dispatch      |
 | `securebank.user.security.allow-unauthenticated-demo-caller` | `false`                 | Resolve token-less requests to the seeded demo user |
 | `securebank.user.cors.allowed-origins`                       | `localhost:3000/5173`   | Direct browser access during development            |
 | `jwt.secret`                                                 | shared local dev secret | JWT validation secret                               |

@@ -6,7 +6,7 @@ interface ApiErrorBody {
 
 export const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
-    return error.response?.data?.message || error.message || fallbackMessage;
+    return error.response?.data?.message || fallbackMessage;
   }
 
   if (error instanceof Error && error.message) {

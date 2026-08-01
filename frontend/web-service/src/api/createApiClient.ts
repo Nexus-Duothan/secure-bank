@@ -1,14 +1,20 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import tokenStorage from './tokenStorage';
+import sessionUser from './sessionUser';
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
+interface ApiClientOptions {
+  attachAccessToken?: boolean;
+}
+
 let refreshRequest: Promise<string | null> | null = null;
 
 const forceLogout = () => {
   tokenStorage.clear();
+  sessionUser.clear();
   if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
     window.location.replace('/login');
   }
@@ -52,7 +58,8 @@ const refreshAccessToken = async (): Promise<string | null> => {
   return refreshRequest;
 };
 
-export const createApiClient = (baseURL: string): AxiosInstance => {
+export const createApiClient = (baseURL: string, options: ApiClientOptions = {}): AxiosInstance => {
+  const { attachAccessToken = true } = options;
   const client = axios.create({
     baseURL,
     headers: {
@@ -60,38 +67,42 @@ export const createApiClient = (baseURL: string): AxiosInstance => {
     },
   });
 
-  client.interceptors.request.use((config) => {
-    const accessToken = tokenStorage.getAccessToken();
-    if (accessToken) {
-      config.headers.set('Authorization', `Bearer ${accessToken}`);
-    }
-    return config;
-  });
-
-  client.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-      const status = error.response?.status as number | undefined;
-      const originalRequest = error.config as RetriableRequestConfig | undefined;
-
-      if (!originalRequest || status !== 401 || originalRequest._retry) {
-        return Promise.reject(error);
+  if (attachAccessToken) {
+    client.interceptors.request.use((config) => {
+      const accessToken = tokenStorage.getAccessToken();
+      if (accessToken) {
+        config.headers.set('Authorization', `Bearer ${accessToken}`);
       }
+      return config;
+    });
+  }
 
-      if (originalRequest.url?.includes('/login') || originalRequest.url?.includes('/refresh')) {
-        return Promise.reject(error);
+  if (attachAccessToken) {
+    client.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        const status = error.response?.status as number | undefined;
+        const originalRequest = error.config as RetriableRequestConfig | undefined;
+
+        if (!originalRequest || status !== 401 || originalRequest._retry) {
+          return Promise.reject(error);
+        }
+
+        if (originalRequest.url?.includes('/login') || originalRequest.url?.includes('/refresh')) {
+          return Promise.reject(error);
+        }
+
+        const nextAccessToken = await refreshAccessToken();
+        if (!nextAccessToken) {
+          return Promise.reject(error);
+        }
+
+        originalRequest._retry = true;
+        originalRequest.headers.set('Authorization', `Bearer ${nextAccessToken}`);
+        return client(originalRequest);
       }
-
-      const nextAccessToken = await refreshAccessToken();
-      if (!nextAccessToken) {
-        return Promise.reject(error);
-      }
-
-      originalRequest._retry = true;
-      originalRequest.headers.set('Authorization', `Bearer ${nextAccessToken}`);
-      return client(originalRequest);
-    }
-  );
+    );
+  }
 
   return client;
 };

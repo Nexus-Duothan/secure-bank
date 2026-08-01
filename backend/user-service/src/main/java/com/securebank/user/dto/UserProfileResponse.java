@@ -17,8 +17,6 @@ public record UserProfileResponse(
   Role role,
   UserStatus status,
   boolean idVerified,
-  boolean frozen,
-  String freezeReason,
   NotificationPreferencesResponse notificationPreferences,
   List<UserDeviceResponse> linkedDevices
 ) {}

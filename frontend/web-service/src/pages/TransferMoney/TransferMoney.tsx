@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Typography, theme } from 'antd';
 import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import transferService from '../../api/transferService';
 import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
@@ -31,9 +32,15 @@ const TransferMoney: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     accountsService
-      .getPrimaryAccount()
+      .getAccounts()
       .then((data) => {
-        if (!cancelled) setFromAccount(data);
+        if (!cancelled && data.length > 0) {
+          const selected =
+            data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
+            data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setFromAccount(selected);
+        }
       })
       .catch(() => {
         // Endpoint not available yet - fall back to the placeholder shown above.

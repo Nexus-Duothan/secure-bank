@@ -6,7 +6,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 @Service
 @Slf4j
@@ -15,6 +18,56 @@ public class LoggingUserSecurityAlertService implements UserSecurityAlertService
   private static final DateTimeFormatter ALERT_TIME = DateTimeFormatter.ofPattern(
     "dd MMM yyyy HH:mm"
   ).withZone(ZoneId.of("Asia/Colombo"));
+  private final RestClient restClient;
+
+  public LoggingUserSecurityAlertService(
+    @Value(
+      "${securebank.notification.service-url:http://localhost:8088}"
+    ) String notificationServiceUrl
+  ) {
+    this.restClient = RestClient.builder().baseUrl(notificationServiceUrl).build();
+  }
+
+  @Override
+  public void sendOtpChallenge(
+    UserProfile profile,
+    ChangeRequestType type,
+    String otpCode,
+    Instant expiresAt
+  ) {
+    OtpChallengeDispatchRequest request = new OtpChallengeDispatchRequest(
+      profile.getId(),
+      profile.getFullName(),
+      profile.getEmail(),
+      profile.getPhoneNumber(),
+      profile.isEmailNotifications(),
+      profile.isSmsNotifications(),
+      type.name(),
+      otpCode,
+      expiresAt
+    );
+
+    try {
+      restClient
+        .post()
+        .uri("/api/v1/notifications/otp-challenges")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(request)
+        .retrieve()
+        .toBodilessEntity();
+      log.info(
+        "OTP challenge queued for {} via notification-service on {}.",
+        profile.getFullName(),
+        ALERT_TIME.format(Instant.now())
+      );
+    } catch (RuntimeException exception) {
+      log.warn(
+        "Unable to queue OTP challenge via notification-service for {}. {}",
+        profile.getFullName(),
+        exception.getMessage()
+      );
+    }
+  }
 
   @Override
   public void sendCriticalChangeAlert(UserProfile profile, ChangeRequestType type, String detail) {
@@ -44,9 +97,9 @@ public class LoggingUserSecurityAlertService implements UserSecurityAlertService
       case LINK_DEVICE -> "New device linking requested";
       case TRUST_DEVICE -> "New device linked";
       case REVOKE_DEVICE -> "Linked device revoked";
-      case FREEZE_ACCOUNT -> "Account freeze requested";
-      case UNFREEZE_ACCOUNT -> "Account reactivated";
       case UPDATE_NOTIFICATION_PREFERENCES -> "Notification preferences updated";
+      case ADMIN_UPDATE_ROLE -> "Account role changed by bank staff";
+      case ADMIN_UPDATE_STATUS -> "Account status changed by bank staff";
     };
   }
 }

@@ -6,3 +6,29 @@ spring:
     name: notification-service
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:true}
+
+securebank:
+  notification:
+    sms:
+      provider: ${SECUREBANK_NOTIFICATION_SMS_PROVIDER:log}
+      sender: ${SECUREBANK_NOTIFICATION_SMS_SENDER:SecureBank}
+      twilio:
+        account-sid: ${SECUREBANK_TWILIO_ACCOUNT_SID:}
+        auth-token: ${SECUREBANK_TWILIO_AUTH_TOKEN:}
+        from-number: ${SECUREBANK_TWILIO_FROM_NUMBER:}
+    email:
+      provider: ${SECUREBANK_NOTIFICATION_EMAIL_PROVIDER:log}
+      from-address: ${SECUREBANK_NOTIFICATION_EMAIL_FROM:no-reply@securebank.lk}
+    in-app:
+      enabled: ${SECUREBANK_NOTIFICATION_IN_APP_ENABLED:true}
