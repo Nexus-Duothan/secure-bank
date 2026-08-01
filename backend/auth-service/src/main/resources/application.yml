@@ -20,7 +20,7 @@ spring:
 
 securebank:
   auth:
-    seed-demo-data: true
+    seed-demo-data: ${SECUREBANK_AUTH_SEED_DEMO_DATA:false}
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
