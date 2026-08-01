@@ -4,7 +4,6 @@ import { Avatar, Flex, Typography, theme } from 'antd';
 import {
   SwapOutlined,
   DollarOutlined,
-  PlusCircleOutlined,
   PercentageOutlined,
   CaretUpOutlined,
 } from '@ant-design/icons';
@@ -68,7 +67,6 @@ const MOCK_TRANSACTIONS: Transaction[] = [
 const QUICK_ACTIONS = [
   { key: 'transfer', label: 'Transfer', icon: <SwapOutlined />, path: '/transfer' },
   { key: 'pay', label: 'Pay bill', icon: <DollarOutlined />, path: '/pay' },
-  { key: 'topup', label: 'Top up', icon: <PlusCircleOutlined />, path: '/transfer' },
   { key: 'loans', label: 'Loans', icon: <PercentageOutlined />, path: '/loans/apply' },
 ];
 
