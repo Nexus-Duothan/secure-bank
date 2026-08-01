@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Input, Typography, theme } from 'antd';
 import type { AxiosError } from 'axios';
 import { authService } from '../../api/authService';
+import tokenStorage from '../../api/tokenStorage';
 import AuthLayout from '../../components/AuthLayout';
 import TrustIndicator from '../../components/TrustIndicator';
 import { formatCountdown, useCountdown } from '../../hooks/useCountdown';
@@ -46,7 +47,8 @@ const OtpVerification: React.FC = () => {
     setSubmitting(true);
     setError(null);
     try {
-      await authService.verifyOtp({ preAuthToken, totpCode: otp });
+      const response = await authService.verifyOtp({ preAuthToken, totpCode: otp });
+      tokenStorage.setTokens(response.accessToken, response.refreshToken);
       navigate('/dashboard');
     } catch (err) {
       const axiosError = err as AxiosError<{ message?: string }>;

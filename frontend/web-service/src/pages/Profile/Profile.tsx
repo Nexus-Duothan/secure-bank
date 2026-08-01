@@ -5,6 +5,7 @@ import { LogoutOutlined, RightOutlined } from '@ant-design/icons';
 import authService from '../../api/authService';
 import userService, { type UserProfile } from '../../api/userService';
 import accountsService, { type Account } from '../../api/accountsService';
+import tokenStorage from '../../api/tokenStorage';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
 
@@ -136,6 +137,7 @@ const Profile: React.FC = () => {
     } catch {
       // Endpoint not available yet — proceed to clear the session locally.
     } finally {
+      tokenStorage.clear();
       navigate('/login', { replace: true });
     }
   };
