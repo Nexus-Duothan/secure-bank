@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Flex, Typography, theme } from 'antd';
+import { Flex, Typography, message, theme } from 'antd';
 import notificationService, {
   type Notification,
   type NotificationType,
@@ -98,9 +98,11 @@ const Notifications: React.FC = () => {
   const groups = useMemo(() => groupByLabel(notifications), [notifications]);
 
   const handleMarkAllAsRead = () => {
+    const previousNotifications = notifications;
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
     notificationService.markAllAsRead().catch(() => {
-      // Endpoint not available yet — local state already reflects the change.
+      setNotifications(previousNotifications);
+      message.error('Could not mark notifications as read. Please try again.');
     });
   };
 
