@@ -1,20 +1,28 @@
 # Lending Service (`lending-service`)
 
-The **Lending Service** handles loan originations, application status tracking, repayment schedules, and automated installment deductions.
+The **Lending Service** handles loan origination, application review, repayment schedules, automated installment collection, and repayment reminders.
 
 ---
 
-## 🎯 What to Develop
+## What's implemented
 
-- **Loan Applications**: Application submission workflow for personal and SME loans (`FR-22`).
-- **Real-Time Status Tracking**: Application status transitions (`Submitted`, `Under Review`, `Approved`, `Disbursed`, `Rejected`) (`FR-23`).
-- **Repayment Schedules**: Calculate and display interest, principal breakdown, installment due dates (`FR-24`).
-- **Automated Repayment**: Auto-deduct loan repayments from linked customer current/savings accounts with retry policies (`FR-25`).
-- **Repayment Reminders**: Event triggers sent to Notification Service (`FR-26`).
+- **Loan applications** (`FR-22`): `POST /api/v1/loans/apply` validates the requested amount/term against configured platform bounds and creates an application in `UNDER_REVIEW`.
+- **Status tracking** (`FR-23`): `GET /api/v1/loans/applications`, `GET /api/v1/loans/applications/{id}` for the applicant; `GET /api/v1/loans/officer/pending` + `POST /api/v1/loans/officer/{id}/review` (role-gated to `BANK_OFFICER`/`ADMIN`) for review. Approving an application disburses it in the same transaction — creates the `Loan`, computes and persists its full amortization schedule, and publishes a `loans.disbursed.v1` event.
+- **Repayment schedule** (`FR-24`): `GET /api/v1/loans/{id}` (summary: remaining balance, installments paid/total, next due date/amount) and `GET /api/v1/loans/{id}/installments` (full schedule). The schedule is a standard reducing-balance (EMI) amortization, computed once at disbursement and persisted per-installment rather than recomputed on the fly.
+- **Automated repayment + retry** (`FR-25`): `ScheduledInstallmentRunner` polls every minute for due/retry-due installments and hands each off to `InstallmentExecutionService` for a locked, transactional collection attempt. **Retry policy** (not specified by the FR — a documented judgment call): on insufficient funds (or accounts-service being unreachable, treated the same way), retry once per day for up to 3 attempts before marking the installment `OVERDUE` and the loan `DELINQUENT`. Configurable via `securebank.lending.repayment.*`. `POST /api/v1/loans/{id}/pay` runs the same collection logic on demand (manual early payment), and `PATCH /api/v1/loans/{id}/autopay` lets the borrower opt a loan out of the scheduled runner (manual payment still works either way).
+- **Repayment reminders** (`FR-26`): a second scheduled poll publishes a `loans.repayment-reminder.v1` event once per installment, a configurable lead time (default 72h) before its due date. Like the disbursement and overdue events, this is publish-only — notification-service doesn't consume these topics yet, so this is groundwork for when it does.
+
+## Accounts-service limitation
+
+`accounts-service` is still a bare scaffold: `GET /api/v1/accounts/{id}` returns the same static hardcoded balance for every account, and there is no debit/mutate endpoint of any kind. `AccountsClient` (`client/AccountsClient.java`) is built against that read-only contract — balance checks here are advisory, not authoritative, and no collection in this service actually moves money in a ledger yet. This mirrors transfer-service's stance on the same dependency. Once accounts-service grows a real debit contract, only `AccountsRestClient` needs to change.
+
+## Testing
+
+- `mvn test` runs both plain Mockito unit tests (`AmortizationCalculatorTest`, `InstallmentExecutionServiceTest`) and a full `@SpringBootTest` + MockMvc suite (`LoanControllerTest`) against H2 (`MODE=PostgreSQL`) with Flyway migrations applied for real. `FakeAccountsClient` stands in for accounts-service so the suite needs neither that service nor a live database running.
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 - JDK 21 LTS
 - Apache Maven 3.9+
@@ -22,7 +30,7 @@ The **Lending Service** handles loan originations, application status tracking, 
 
 ---
 
-## 🚀 How to Setup & Run
+## How to Setup & Run
 
 ```bash
 docker compose up -d postgres
