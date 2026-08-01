@@ -85,8 +85,9 @@ class PayeeServiceTest {
 
   @Test
   void requestAddPayee_rejectsWhenAccountAlreadySaved() {
-    when(payeeRepository.existsByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, "acc-other"))
-      .thenReturn(true);
+    when(
+      payeeRepository.existsByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, "acc-other")
+    ).thenReturn(true);
 
     assertThatThrownBy(() ->
       payeeService.requestAddPayee(CALLER, new AddPayeeRequest("A. Silva", "acc-other"))
@@ -122,8 +123,9 @@ class PayeeServiceTest {
   @Test
   void confirmAddPayee_rejectsWrongCode_andIncrementsFailedAttempts() {
     PendingPayeeAddition change = pendingAddition().build();
-    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID))
-      .thenReturn(Optional.of(change));
+    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID)).thenReturn(
+      Optional.of(change)
+    );
 
     assertThatThrownBy(() ->
       payeeService.confirmAddPayee(CALLER, change.getId(), new ConfirmPayeeRequest("000000"))
@@ -136,9 +138,12 @@ class PayeeServiceTest {
 
   @Test
   void confirmAddPayee_rejectsExpiredChallenge() {
-    PendingPayeeAddition change = pendingAddition().expiresAt(Instant.now().minusSeconds(1)).build();
-    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID))
-      .thenReturn(Optional.of(change));
+    PendingPayeeAddition change = pendingAddition()
+      .expiresAt(Instant.now().minusSeconds(1))
+      .build();
+    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID)).thenReturn(
+      Optional.of(change)
+    );
 
     assertThatThrownBy(() ->
       payeeService.confirmAddPayee(CALLER, change.getId(), new ConfirmPayeeRequest(KNOWN_CODE))
@@ -148,8 +153,9 @@ class PayeeServiceTest {
   @Test
   void confirmAddPayee_rejectsAfterAttemptsExhausted() {
     PendingPayeeAddition change = pendingAddition().failedAttempts(MAX_ATTEMPTS).build();
-    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID))
-      .thenReturn(Optional.of(change));
+    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID)).thenReturn(
+      Optional.of(change)
+    );
 
     assertThatThrownBy(() ->
       payeeService.confirmAddPayee(CALLER, change.getId(), new ConfirmPayeeRequest(KNOWN_CODE))
@@ -159,9 +165,12 @@ class PayeeServiceTest {
   @Test
   void confirmAddPayee_createsPayeeWithTwelveHourCoolingOff_whenCodeIsCorrect() {
     PendingPayeeAddition change = pendingAddition().build();
-    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID))
-      .thenReturn(Optional.of(change));
-    when(payeeRepository.save(any(Payee.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID)).thenReturn(
+      Optional.of(change)
+    );
+    when(payeeRepository.save(any(Payee.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
+    );
 
     Instant before = Instant.now();
     PayeeResponse response = payeeService.confirmAddPayee(
@@ -187,10 +196,18 @@ class PayeeServiceTest {
       .accountReference("acc-other")
       .coolingOffUntil(Instant.now())
       .build();
-    when(payeeRepository.findByIdAndOwnerUserId(payee.getId(), USER_ID)).thenReturn(Optional.of(payee));
-    when(payeeRepository.save(any(Payee.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(payeeRepository.findByIdAndOwnerUserId(payee.getId(), USER_ID)).thenReturn(
+      Optional.of(payee)
+    );
+    when(payeeRepository.save(any(Payee.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
+    );
 
-    PayeeResponse response = payeeService.editPayee(CALLER, payee.getId(), new EditPayeeRequest("New name"));
+    PayeeResponse response = payeeService.editPayee(
+      CALLER,
+      payee.getId(),
+      new EditPayeeRequest("New name")
+    );
 
     assertThat(response.nickname()).isEqualTo("New name");
   }

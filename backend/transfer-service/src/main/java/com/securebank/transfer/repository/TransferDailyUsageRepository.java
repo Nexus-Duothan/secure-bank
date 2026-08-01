@@ -9,8 +9,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 public interface TransferDailyUsageRepository
-  extends JpaRepository<TransferDailyUsage, TransferDailyUsage.Key> {
-
+  extends JpaRepository<TransferDailyUsage, TransferDailyUsage.Key>
+{
   /**
    * Row-level lock so two concurrent transfers from the same account serialise on their shared
    * daily-usage counter instead of both reading a stale total and jointly blowing past the limit.

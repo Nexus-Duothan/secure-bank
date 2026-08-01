@@ -20,6 +20,8 @@ spring:
     baseline-on-migrate: true
 
 securebank:
+  notification:
+    service-url: ${SECUREBANK_NOTIFICATION_SERVICE_URL:http://localhost:8088}
   user:
     cors:
       allowed-origins:
@@ -28,9 +30,10 @@ securebank:
     otp:
       ttl: PT5M
       max-attempts: 5
-      # Local prototype only: set this to true only when you explicitly want the generated OTP
-      # echoed back in the challenge response for a browser-only demo.
-      expose-code: ${SECUREBANK_USER_OTP_EXPOSE_CODE:false}
+      # Local prototype default: echo the generated OTP back in the challenge response so the
+      # browser-only flow works without a live SMS/email delivery integration. Override to false
+      # when you want to test real notification-based delivery behavior.
+      expose-code: ${SECUREBANK_USER_OTP_EXPOSE_CODE:true}
     security:
       # Local prototype escape hatch only. Keep this false unless you explicitly want
       # header-less requests to impersonate the first seeded demo profile.

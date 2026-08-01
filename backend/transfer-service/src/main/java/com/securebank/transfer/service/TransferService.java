@@ -54,11 +54,15 @@ public class TransferService {
   private final TransferEventPublisher eventPublisher;
 
   @Transactional
-  public TransferResponse quote(CallerIdentity caller, TransferQuoteRequest request, String idempotencyKey) {
+  public TransferResponse quote(
+    CallerIdentity caller,
+    TransferQuoteRequest request,
+    String idempotencyKey
+  ) {
     // Blank normalizes to null so it's never persisted: the unique index only excludes NULL,
     // not empty string, and a stored "" would collide across unrelated blank-header requests.
     String normalizedIdempotencyKey =
-      (idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey.trim();
+      idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
     if (normalizedIdempotencyKey != null) {
       var existing = transferRepository.findByInitiatedByUserIdAndIdempotencyKey(
         caller.userId(),
@@ -84,7 +88,11 @@ public class TransferService {
     if (account.balance().compareTo(totalDebit) < 0) {
       throw new InsufficientFundsException("Insufficient balance to cover this transfer");
     }
-    assertWithinDailyLimit(request.fromAccountId(), request.amount(), peekDailyUsage(request.fromAccountId()));
+    assertWithinDailyLimit(
+      request.fromAccountId(),
+      request.amount(),
+      peekDailyUsage(request.fromAccountId())
+    );
 
     Transfer transfer = transferRepository.save(
       Transfer.builder()

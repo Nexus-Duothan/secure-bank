@@ -41,7 +41,10 @@ public class TransferController {
   }
 
   @GetMapping("/{id}")
-  public ResponseEntity<TransferResponse> getTransfer(CallerIdentity caller, @PathVariable UUID id) {
+  public ResponseEntity<TransferResponse> getTransfer(
+    CallerIdentity caller,
+    @PathVariable UUID id
+  ) {
     return ResponseEntity.ok(transferService.get(caller, id));
   }
 }

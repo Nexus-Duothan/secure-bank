@@ -1,26 +1,31 @@
+import dayjs, { type Dayjs } from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Flex, Typography, theme } from 'antd';
+import { Button, DatePicker, Flex, InputNumber, Select, Typography, theme } from 'antd';
 import { LeftOutlined } from '@ant-design/icons';
-import auditService, { type AuditTransaction } from '../../api/auditService';
+import accountsService, {
+  type AccountActivity,
+  type TransactionDirection,
+} from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import TransactionRow from '../../components/TransactionRow';
-import { DEMO_AUDIT_TRANSACTIONS } from '../../mocks/demoCustomer';
+import { DEMO_ACCOUNT_ACTIVITY } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
-type FilterKey = 'all' | 'in' | 'out' | 'flagged';
+type FilterKey = 'all' | 'in' | 'out';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'in', label: 'In' },
   { key: 'out', label: 'Out' },
-  { key: 'flagged', label: 'Flagged' },
 ];
 
-const MOCK_TRANSACTIONS: AuditTransaction[] = DEMO_AUDIT_TRANSACTIONS;
+const MOCK_TRANSACTIONS: AccountActivity[] = DEMO_ACCOUNT_ACTIVITY;
 
-const groupByDate = (transactions: AuditTransaction[]) => {
-  const groups: { label: string; items: AuditTransaction[] }[] = [];
+const groupByDate = (transactions: AccountActivity[]) => {
+  const groups: { label: string; items: AccountActivity[] }[] = [];
   transactions.forEach((txn) => {
     const group = groups.find((item) => item.label === txn.dateGroupLabel);
     if (group) {
@@ -32,41 +37,116 @@ const groupByDate = (transactions: AuditTransaction[]) => {
   return groups;
 };
 
+const mapDirection = (value: FilterKey): TransactionDirection =>
+  value === 'all' ? 'ALL' : value === 'in' ? 'IN' : 'OUT';
+
+const formatTypeLabel = (value: string) =>
+  value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
 const TransactionHistory: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [transactions, setTransactions] = useState<AuditTransaction[]>(MOCK_TRANSACTIONS);
+  const [accountId, setAccountId] = useState(accountSelection.getSelectedAccountId());
+  const [transactions, setTransactions] = useState<AccountActivity[]>(MOCK_TRANSACTIONS);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [selectedType, setSelectedType] = useState<string | undefined>();
+  const [amountMin, setAmountMin] = useState<number | null>(null);
+  const [amountMax, setAmountMax] = useState<number | null>(null);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    auditService
-      .getTransactions()
+    accountsService
+      .getAccounts()
       .then((data) => {
-        if (!cancelled) setTransactions(data);
+        if (!cancelled && data.length > 0) {
+          const selected =
+            data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
+            data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setAccountId(selected.id);
+        }
       })
       .catch(() => {
         // Endpoint not available yet - fall back to the placeholder shown above.
       });
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const filteredTransactions = useMemo(() => {
-    switch (filter) {
-      case 'in':
-        return transactions.filter((txn) => txn.amount > 0);
-      case 'out':
-        return transactions.filter((txn) => txn.amount < 0);
-      case 'flagged':
-        return transactions.filter((txn) => txn.flagged);
-      default:
-        return transactions;
-    }
-  }, [transactions, filter]);
+  useEffect(() => {
+    let cancelled = false;
+    accountsService
+      .getTransactionHistory(accountId, {
+        direction: mapDirection(filter),
+        dateFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
+        dateTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+        minAmount: amountMin ?? undefined,
+        maxAmount: amountMax ?? undefined,
+        type: selectedType,
+        flaggedOnly,
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setTransactions(data);
+        }
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
 
-  const groups = useMemo(() => groupByDate(filteredTransactions), [filteredTransactions]);
+        let fallback = MOCK_TRANSACTIONS;
+        if (filter === 'in') {
+          fallback = fallback.filter((txn) => txn.amount > 0);
+        } else if (filter === 'out') {
+          fallback = fallback.filter((txn) => txn.amount < 0);
+        }
+        if (flaggedOnly) {
+          fallback = fallback.filter((txn) => txn.flagged);
+        }
+        if (selectedType) {
+          fallback = fallback.filter((txn) => txn.transactionType === selectedType);
+        }
+        if (amountMin !== null) {
+          fallback = fallback.filter((txn) => Math.abs(txn.amount) >= amountMin);
+        }
+        if (amountMax !== null) {
+          fallback = fallback.filter((txn) => Math.abs(txn.amount) <= amountMax);
+        }
+        if (dateRange?.[0]) {
+          fallback = fallback.filter(
+            (txn) => dayjs(txn.timestamp).valueOf() >= dateRange[0]!.startOf('day').valueOf()
+          );
+        }
+        if (dateRange?.[1]) {
+          fallback = fallback.filter(
+            (txn) => dayjs(txn.timestamp).valueOf() <= dateRange[1]!.endOf('day').valueOf()
+          );
+        }
+        setTransactions(fallback);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, amountMax, amountMin, dateRange, filter, flaggedOnly, selectedType]);
+
+  const typeOptions = useMemo(() => {
+    const allItems = [...MOCK_TRANSACTIONS, ...transactions];
+    return Array.from(new Set(allItems.map((txn) => txn.transactionType)))
+      .sort()
+      .map((value) => ({ label: formatTypeLabel(value), value }));
+  }, [transactions]);
+
+  const groups = useMemo(() => groupByDate(transactions), [transactions]);
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -108,6 +188,125 @@ const TransactionHistory: React.FC = () => {
             );
           })}
         </Flex>
+
+        <div
+          style={{
+            background: token.colorBgContainer,
+            borderRadius: 16,
+            border: `1px solid ${token.colorBorder}`,
+            padding: 16,
+            marginBottom: 24,
+          }}
+        >
+          <Flex vertical gap={14}>
+            <div>
+              <Text
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Date range
+              </Text>
+              <RangePicker
+                style={{ width: '100%' }}
+                value={dateRange}
+                onChange={(value) => setDateRange(value)}
+                allowEmpty={[true, true]}
+              />
+            </div>
+
+            <div>
+              <Text
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Amount range
+              </Text>
+              <Flex gap={12}>
+                <InputNumber<number>
+                  style={{ flex: 1 }}
+                  size="large"
+                  min={0}
+                  value={amountMin ?? undefined}
+                  onChange={(value) => setAmountMin(value ?? null)}
+                  placeholder="Min"
+                  controls={false}
+                />
+                <InputNumber<number>
+                  style={{ flex: 1 }}
+                  size="large"
+                  min={0}
+                  value={amountMax ?? undefined}
+                  onChange={(value) => setAmountMax(value ?? null)}
+                  placeholder="Max"
+                  controls={false}
+                />
+              </Flex>
+            </div>
+
+            <div>
+              <Text
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Transaction type
+              </Text>
+              <Select
+                allowClear
+                size="large"
+                placeholder="All transaction types"
+                value={selectedType}
+                options={typeOptions}
+                onChange={(value) => setSelectedType(value)}
+              />
+            </div>
+
+            <Flex justify="space-between" align="center" gap={12}>
+              <Button
+                onClick={() => setFlaggedOnly((value) => !value)}
+                style={{
+                  borderColor: flaggedOnly ? token.colorPrimary : token.colorBorder,
+                  color: flaggedOnly ? token.colorPrimary : token.colorText,
+                  fontWeight: 600,
+                }}
+              >
+                {flaggedOnly ? 'Showing held items' : 'Held for review only'}
+              </Button>
+              <Button
+                onClick={() => {
+                  setFilter('all');
+                  setFlaggedOnly(false);
+                  setSelectedType(undefined);
+                  setAmountMin(null);
+                  setAmountMax(null);
+                  setDateRange(null);
+                }}
+              >
+                Clear filters
+              </Button>
+            </Flex>
+          </Flex>
+        </div>
 
         {groups.map((group) => (
           <div key={group.label} style={{ marginBottom: 20 }}>

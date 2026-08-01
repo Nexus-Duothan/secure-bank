@@ -1,32 +1,47 @@
 # Notification Service (`notification-service`)
 
-The **Notification Service** acts as an event-driven multi-channel communication engine delivering SMS, email, and push notifications.
+The **Notification Service** handles SecureBank outbound OTP and alert delivery.
 
 ---
 
-## 🎯 What to Develop
+## Implemented Locally
 
-- **Kafka Event Consumer**: Listen to transaction and security events from `accounts-service`, `transfer-service`, and `auth-service`.
-- **Real-Time Transaction Alerts**: Instantly alert users on account debits, credits, logins (`FR-27`).
-- **Security Alerts**: Immediate security notifications for failed logins, account holds, or new payees (`FR-28`).
-- **Multi-Channel Delivery**: Support Email, Push, and SMS with guaranteed SMS fallback for critical security alerts (`FR-29`).
+- OTP dispatch endpoint for `user-service`
+- SMS-only OTP delivery for SecureBank confirmation codes
+- Provider-ready delivery with log-mode fallback and Twilio SMS
+- Live notification feed for the frontend notifications screen
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 - JDK 21 LTS
 - Apache Maven 3.9+
-- Apache Kafka (`localhost:9092`)
+- Optional Twilio credentials for live outbound delivery
 
 ---
 
-## 🚀 How to Setup & Run
+## How to Setup & Run
 
 ```bash
-docker compose up -d kafka
-mvn clean compile
-mvn spring-boot:run
+mvn -pl backend/notification-service spring-boot:run
 ```
 
-The service will start on port `8088`.
+The service starts on port `8088`.
+
+---
+
+## Provider Configuration
+
+Default local mode logs outgoing SMS attempts.
+
+### Real SMS via Twilio
+
+```powershell
+$env:SECUREBANK_NOTIFICATION_SMS_PROVIDER="twilio"
+$env:SECUREBANK_TWILIO_ACCOUNT_SID="<your-account-sid>"
+$env:SECUREBANK_TWILIO_AUTH_TOKEN="<your-auth-token>"
+$env:SECUREBANK_TWILIO_FROM_NUMBER="+1..."
+```
+
+OTP requests are sent only as SMS.

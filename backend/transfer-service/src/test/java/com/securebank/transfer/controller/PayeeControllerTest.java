@@ -58,7 +58,9 @@ class PayeeControllerTest {
   @Test
   void listPayees_returnsEmptyList_initially() throws Exception {
     mockMvc
-      .perform(get("/api/v1/transfers/payees").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken()))
+      .perform(
+        get("/api/v1/transfers/payees").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+      )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$").isEmpty());
   }
@@ -97,7 +99,9 @@ class PayeeControllerTest {
       .andExpect(jsonPath("$.coolingOff").value(true));
 
     mockMvc
-      .perform(get("/api/v1/transfers/payees").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken()))
+      .perform(
+        get("/api/v1/transfers/payees").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+      )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.length()").value(1));
   }
@@ -147,8 +151,10 @@ class PayeeControllerTest {
   void removePayee_returnsNotFound_whenPayeeDoesNotExist() throws Exception {
     mockMvc
       .perform(
-        delete("/api/v1/transfers/payees/{id}", UUID.randomUUID())
-          .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+        delete("/api/v1/transfers/payees/{id}", UUID.randomUUID()).header(
+          HttpHeaders.AUTHORIZATION,
+          "Bearer " + accessToken()
+        )
       )
       .andExpect(status().isNotFound());
   }

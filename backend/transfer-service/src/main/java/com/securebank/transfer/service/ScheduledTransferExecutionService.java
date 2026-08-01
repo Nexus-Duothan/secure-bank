@@ -27,7 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ScheduledTransferExecutionService {
 
-  private static final Logger log = LoggerFactory.getLogger(ScheduledTransferExecutionService.class);
+  private static final Logger log = LoggerFactory.getLogger(
+    ScheduledTransferExecutionService.class
+  );
   // No per-user timezone data exists yet; matches the fixed zone already used for alert timestamps
   // elsewhere in the platform (e.g. LoggingUserSecurityAlertService).
   private static final ZoneId SCHEDULE_ZONE = ZoneId.of("Asia/Colombo");
@@ -37,7 +39,9 @@ public class ScheduledTransferExecutionService {
 
   @Transactional
   public void executeDue(UUID scheduleId) {
-    ScheduledTransfer schedule = scheduledTransferRepository.findForUpdateById(scheduleId).orElse(null);
+    ScheduledTransfer schedule = scheduledTransferRepository
+      .findForUpdateById(scheduleId)
+      .orElse(null);
     if (schedule == null || schedule.getStatus() != ScheduleStatus.ACTIVE) {
       return;
     }

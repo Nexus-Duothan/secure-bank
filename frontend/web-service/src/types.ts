@@ -30,8 +30,6 @@ export type UserProfile = {
   role: Role;
   status: UserStatus;
   idVerified: boolean;
-  frozen: boolean;
-  freezeReason: string | null;
   notificationPreferences: NotificationPreferences;
   linkedDevices: UserDevice[];
 };

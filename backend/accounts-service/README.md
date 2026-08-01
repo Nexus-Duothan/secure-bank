@@ -33,3 +33,22 @@ mvn spring-boot:run
 ```
 
 The service will start on port `8084`.
+
+## Demo account linking
+
+The customer Accounts page can link another account after an ownership check and SMS OTP.
+For the local demo customer, use:
+
+- Account number: `1234567890`
+- National ID: `200229602936`
+
+OTP codes are sent through `notification-service`. Its default local provider logs SMS messages.
+Set `SECUREBANK_NOTIFICATION_SMS_PROVIDER=twilio` together with
+`SECUREBANK_TWILIO_ACCOUNT_SID`, `SECUREBANK_TWILIO_AUTH_TOKEN`, and
+`SECUREBANK_TWILIO_FROM_NUMBER` to deliver real SMS messages.
+
+The local credit-card linking record is:
+
+- Card number: `4485 1234 1234 5678`
+- Expiry: `11/29`
+- National ID: `200229602936`

@@ -10,6 +10,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import accountsService, { type Account, type Transaction } from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import userService, { type UserProfile } from '../../api/userService';
 import TransactionRow from '../../components/TransactionRow';
 import BottomNav from '../../components/BottomNav';
@@ -51,6 +52,23 @@ const formatCurrency = (value: number, currency: string) =>
     minimumFractionDigits: 2,
   }).format(value);
 
+const formatMaskedAccountNumber = (accountNumber?: string, lastFourDigits?: string) => {
+  if (accountNumber) {
+    let maskedDigitsRemaining = Math.max(0, accountNumber.replace(/\D/g, '').length - 4);
+
+    return accountNumber.replace(/\d/g, (digit) => {
+      if (maskedDigitsRemaining > 0) {
+        maskedDigitsRemaining -= 1;
+        return '*';
+      }
+
+      return digit;
+    });
+  }
+
+  return `**** **** ${String(lastFourDigits ?? '').padStart(4, '*')}`;
+};
+
 const Dashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -78,21 +96,18 @@ const Dashboard: React.FC = () => {
       });
 
     accountsService
-      .getPrimaryAccount()
-      .then((data) => {
-        if (!cancelled) setAccount(data);
+      .getAccounts()
+      .then(async (data) => {
+        if (cancelled || data.length === 0) return;
+        const storedId = accountSelection.getSelectedAccountId();
+        const selected = data.find((item) => item.id === storedId) ?? data[0];
+        accountSelection.setSelectedAccountId(selected.id);
+        setAccount(selected);
+        const recent = await accountsService.getRecentTransactions(selected.id, 4);
+        if (!cancelled) setTransactions(recent);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
-      });
-
-    accountsService
-      .getRecentTransactions(4)
-      .then((data) => {
-        if (!cancelled) setTransactions(data);
-      })
-      .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
 
     return () => {
@@ -101,6 +116,10 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const fullName = profile.fullName;
+  const maskedAccountNumber = formatMaskedAccountNumber(
+    account.accountNumber,
+    account.lastFourDigits
+  );
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -151,11 +170,13 @@ const Dashboard: React.FC = () => {
         </Flex>
 
         <div
+          onClick={() => navigate(`/accounts/${account.id}`)}
           style={{
             background: NAVY,
             borderRadius: 20,
             padding: '24px 24px 28px',
             marginBottom: 28,
+            cursor: 'pointer',
           }}
         >
           <Flex justify="space-between" align="center">
@@ -222,7 +243,7 @@ const Dashboard: React.FC = () => {
               className="font-mono"
               style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, letterSpacing: 1 }}
             >
-              •••• {account.lastFourDigits}
+              {maskedAccountNumber}
             </Text>
           </Flex>
         </div>
@@ -298,7 +319,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <BottomNav accountsPath={`/accounts/${account.id}`} />
+      <BottomNav />
     </div>
   );
 };

@@ -16,8 +16,6 @@ public interface PendingPayeeAdditionRepository extends JpaRepository<PendingPay
   Optional<PendingPayeeAddition> findByIdAndOwnerUserId(UUID id, UUID ownerUserId);
 
   @Modifying
-  @Query(
-    "delete from PendingPayeeAddition c where c.confirmed = false and c.expiresAt < :cutoff"
-  )
+  @Query("delete from PendingPayeeAddition c where c.confirmed = false and c.expiresAt < :cutoff")
   int deleteUnconfirmedExpiredBefore(Instant cutoff);
 }

@@ -88,7 +88,12 @@ class ScheduledTransferControllerTest {
     String scheduleId = objectMapper.readTree(body).get("id").asText();
 
     mockMvc
-      .perform(get("/api/v1/transfers/scheduled").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken()))
+      .perform(
+        get("/api/v1/transfers/scheduled").header(
+          HttpHeaders.AUTHORIZATION,
+          "Bearer " + accessToken()
+        )
+      )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.length()").value(1))
       .andExpect(jsonPath("$[0].id").value(scheduleId));
@@ -145,7 +150,11 @@ class ScheduledTransferControllerTest {
         patch("/api/v1/transfers/scheduled/{id}", scheduleId)
           .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
           .contentType(MediaType.APPLICATION_JSON)
-          .content(objectMapper.writeValueAsString(new UpdateScheduleStatusRequest(ScheduleStatus.CANCELLED)))
+          .content(
+            objectMapper.writeValueAsString(
+              new UpdateScheduleStatusRequest(ScheduleStatus.CANCELLED)
+            )
+          )
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("CANCELLED"));
@@ -155,7 +164,9 @@ class ScheduledTransferControllerTest {
         patch("/api/v1/transfers/scheduled/{id}", scheduleId)
           .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
           .contentType(MediaType.APPLICATION_JSON)
-          .content(objectMapper.writeValueAsString(new UpdateScheduleStatusRequest(ScheduleStatus.ACTIVE)))
+          .content(
+            objectMapper.writeValueAsString(new UpdateScheduleStatusRequest(ScheduleStatus.ACTIVE))
+          )
       )
       .andExpect(status().isConflict());
   }

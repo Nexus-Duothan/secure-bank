@@ -47,10 +47,17 @@ class ScheduledTransferServiceTest {
       null,
       null
     );
-    scheduledTransferService = new ScheduledTransferService(scheduledTransferRepository, properties);
+    scheduledTransferService = new ScheduledTransferService(
+      scheduledTransferRepository,
+      properties
+    );
   }
 
-  private CreateScheduledTransferRequest request(BigDecimal amount, Instant startAt, Instant endDate) {
+  private CreateScheduledTransferRequest request(
+    BigDecimal amount,
+    Instant startAt,
+    Instant endDate
+  ) {
     return new CreateScheduledTransferRequest(
       FROM_ACCOUNT,
       TO_ACCOUNT,
@@ -104,14 +111,17 @@ class ScheduledTransferServiceTest {
   void create_rejectsEndDateBeforeStartAt() {
     Instant startAt = Instant.now().plusSeconds(3600);
     assertThatThrownBy(() ->
-      scheduledTransferService.create(CALLER, request(new BigDecimal("100"), startAt, startAt.minusSeconds(60)))
+      scheduledTransferService.create(
+        CALLER,
+        request(new BigDecimal("100"), startAt, startAt.minusSeconds(60))
+      )
     ).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void create_savesActiveScheduleWithNextRunAtEqualToStartAt() {
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
     Instant startAt = Instant.now().plusSeconds(3600);
 
@@ -126,7 +136,9 @@ class ScheduledTransferServiceTest {
 
   @Test
   void updateStatus_throwsNotFound_whenNotOwnedByCaller() {
-    when(scheduledTransferRepository.findByIdAndOwnerUserId(any(), any())).thenReturn(Optional.empty());
+    when(scheduledTransferRepository.findByIdAndOwnerUserId(any(), any())).thenReturn(
+      Optional.empty()
+    );
 
     assertThatThrownBy(() ->
       scheduledTransferService.updateStatus(
@@ -178,8 +190,8 @@ class ScheduledTransferServiceTest {
     when(scheduledTransferRepository.findByIdAndOwnerUserId(schedule.getId(), USER_ID)).thenReturn(
       Optional.of(schedule)
     );
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     ScheduledTransferResponse response = scheduledTransferService.updateStatus(

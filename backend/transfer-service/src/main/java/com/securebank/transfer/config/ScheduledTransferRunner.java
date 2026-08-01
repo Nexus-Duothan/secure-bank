@@ -31,11 +31,18 @@ public class ScheduledTransferRunner {
 
   @Scheduled(fixedDelayString = "PT1M", initialDelayString = "PT30S")
   public void runDueSchedules() {
-    for (UUID scheduleId : scheduledTransferRepository.findDueIds(ScheduleStatus.ACTIVE, Instant.now())) {
+    for (UUID scheduleId : scheduledTransferRepository.findDueIds(
+      ScheduleStatus.ACTIVE,
+      Instant.now()
+    )) {
       try {
         executionService.executeDue(scheduleId);
       } catch (RuntimeException exception) {
-        log.error("Unexpected failure executing scheduled transfer {}; will retry next tick", scheduleId, exception);
+        log.error(
+          "Unexpected failure executing scheduled transfer {}; will retry next tick",
+          scheduleId,
+          exception
+        );
       }
     }
   }

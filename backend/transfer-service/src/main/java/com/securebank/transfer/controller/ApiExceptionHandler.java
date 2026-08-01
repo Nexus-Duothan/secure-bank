@@ -78,7 +78,10 @@ public class ApiExceptionHandler {
     AccountsUnavailableException exception
   ) {
     log.warn("accounts-service call failed", exception);
-    return error(HttpStatus.SERVICE_UNAVAILABLE, "Unable to verify account balance, please try again");
+    return error(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      "Unable to verify account balance, please try again"
+    );
   }
 
   /**

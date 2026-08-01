@@ -28,12 +28,10 @@ public class KafkaTransferEventListener {
   }
 
   private void send(String key, Object event) {
-    kafkaTemplate
-      .send(TOPIC, key, event)
-      .whenComplete((result, exception) -> {
-        if (exception != null) {
-          log.warn("Failed to publish {} to {}", event.getClass().getSimpleName(), TOPIC, exception);
-        }
-      });
+    kafkaTemplate.send(TOPIC, key, event).whenComplete((result, exception) -> {
+      if (exception != null) {
+        log.warn("Failed to publish {} to {}", event.getClass().getSimpleName(), TOPIC, exception);
+      }
+    });
   }
 }

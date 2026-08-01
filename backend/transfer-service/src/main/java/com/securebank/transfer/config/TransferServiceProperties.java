@@ -38,7 +38,11 @@ public record TransferServiceProperties(
    * @param payeeCoolingOffThreshold amount at or above which a transfer to a payee still inside
    *     its 12-hour cooling-off window is rejected (FR-16)
    */
-  public record Limits(BigDecimal perTransaction, BigDecimal daily, BigDecimal payeeCoolingOffThreshold) {
+  public record Limits(
+    BigDecimal perTransaction,
+    BigDecimal daily,
+    BigDecimal payeeCoolingOffThreshold
+  ) {
     public Limits {
       perTransaction = perTransaction == null ? new BigDecimal("500000") : perTransaction;
       daily = daily == null ? new BigDecimal("1000000") : daily;

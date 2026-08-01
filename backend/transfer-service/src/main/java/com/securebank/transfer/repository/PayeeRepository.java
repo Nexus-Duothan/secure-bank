@@ -16,5 +16,8 @@ public interface PayeeRepository extends JpaRepository<Payee, UUID> {
     String accountReference
   );
 
-  boolean existsByOwnerUserIdAndAccountReferenceIgnoreCase(UUID ownerUserId, String accountReference);
+  boolean existsByOwnerUserIdAndAccountReferenceIgnoreCase(
+    UUID ownerUserId,
+    String accountReference
+  );
 }

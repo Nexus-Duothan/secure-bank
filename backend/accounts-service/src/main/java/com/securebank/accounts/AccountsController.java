@@ -1,135 +1,161 @@
 package com.securebank.accounts;
 
+import jakarta.validation.Valid;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/accounts")
+@RequiredArgsConstructor
 public class AccountsController {
 
-  private static final AccountResponse PRIMARY_ACCOUNT = new AccountResponse(
-    "acc-demo-primary",
-    "Everyday Current",
-    "CURRENT",
-    "67",
-    new BigDecimal("48231.76"),
-    "LKR",
-    2.4,
-    "2m ago"
-  );
+  private final AccountsService accountsService;
 
-  private static final AccountDetailResponse PRIMARY_ACCOUNT_DETAIL = new AccountDetailResponse(
-    PRIMARY_ACCOUNT.id(),
-    PRIMARY_ACCOUNT.nickname(),
-    "Everyday Current",
-    PRIMARY_ACCOUNT.currency(),
-    PRIMARY_ACCOUNT.balance(),
-    "1234 5678 90067",
-    "SBLK0007",
-    "14 Mar 2024",
-    "Kandy City",
-    "Active - Verified"
-  );
-
-  private static final List<TransactionResponse> RECENT_TRANSACTIONS = List.of(
-    new TransactionResponse(
-      "txn-demo-001",
-      "Ceylon Electricity Board",
-      "Utilities",
-      "Today",
-      new BigDecimal("-84.20"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-002",
-      "Salary Deposit",
-      "Income",
-      "Yesterday",
-      new BigDecimal("3200.00"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-003",
-      "Kumar's Grocers",
-      "Groceries",
-      "Jul 20",
-      new BigDecimal("-46.75"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-004",
-      "Transfer to A. Silva",
-      "Transfer",
-      "Jul 19",
-      new BigDecimal("-150.00"),
-      true
-    )
-  );
+  @GetMapping
+  public List<AccountResponse> getLinkedAccounts() {
+    return accountsService.getLinkedAccounts();
+  }
 
   @GetMapping("/primary")
   public AccountResponse getPrimaryAccount() {
-    return PRIMARY_ACCOUNT;
+    return accountsService.getPrimaryAccount();
   }
 
   @GetMapping("/primary/transactions")
   public List<TransactionResponse> getRecentTransactions(
     @RequestParam(defaultValue = "4") int limit
   ) {
-    int safeLimit = Math.min(Math.max(limit, 1), RECENT_TRANSACTIONS.size());
-    return RECENT_TRANSACTIONS.subList(0, safeLimit);
+    return accountsService.getRecentTransactions(limit);
+  }
+
+  @GetMapping("/{id}/transactions/recent")
+  public List<TransactionResponse> getRecentTransactions(
+    @PathVariable String id,
+    @RequestParam(defaultValue = "4") int limit
+  ) {
+    return accountsService.getRecentTransactions(id, limit);
+  }
+
+  @GetMapping("/products")
+  public List<AccountProductResponse> getAccountProducts(
+    @RequestParam(required = false) String accountType
+  ) {
+    return accountsService.getAccountProducts(accountType);
+  }
+
+  @PostMapping("/link")
+  public OtpChallengeResponse requestAccountLink(@Valid @RequestBody LinkAccountRequest request) {
+    return accountsService.requestAccountLink(request);
+  }
+
+  @PostMapping("/link/{changeRequestId}/confirm")
+  public LinkedAccountResponse confirmAccountLink(
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody ConfirmChangeRequest request
+  ) {
+    return accountsService.confirmAccountLink(changeRequestId, request);
+  }
+
+  @PostMapping("/open")
+  public OtpChallengeResponse requestAccountOpening(
+    @Valid @RequestBody OpenAccountRequest request
+  ) {
+    return accountsService.requestAccountOpening(request);
+  }
+
+  @PostMapping("/open/{changeRequestId}/confirm")
+  public LinkedAccountResponse confirmAccountOpening(
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody ConfirmChangeRequest request
+  ) {
+    return accountsService.confirmAccountOpening(changeRequestId, request);
+  }
+
+  @PostMapping("/cards/link")
+  public OtpChallengeResponse requestCreditCardLink(
+    @Valid @RequestBody LinkCreditCardRequest request
+  ) {
+    return accountsService.requestCreditCardLink(request);
+  }
+
+  @PostMapping("/cards/link/{changeRequestId}/confirm")
+  public LinkedCardResponse confirmCreditCardLink(
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody ConfirmChangeRequest request
+  ) {
+    return accountsService.confirmCreditCardLink(changeRequestId, request);
+  }
+
+  @GetMapping("/{id}/transactions")
+  public List<AccountActivityResponse> getTransactionHistory(
+    @PathVariable String id,
+    @RequestParam(defaultValue = "ALL") TransactionDirection direction,
+    @RequestParam(required = false) @DateTimeFormat(
+      iso = DateTimeFormat.ISO.DATE
+    ) LocalDate dateFrom,
+    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+    @RequestParam(required = false) BigDecimal minAmount,
+    @RequestParam(required = false) BigDecimal maxAmount,
+    @RequestParam(required = false) String type,
+    @RequestParam(defaultValue = "false") boolean flaggedOnly
+  ) {
+    return accountsService.getTransactionHistory(
+      id,
+      direction,
+      dateFrom,
+      dateTo,
+      minAmount,
+      maxAmount,
+      type,
+      flaggedOnly
+    );
   }
 
   @GetMapping("/{id}")
   public AccountDetailResponse getAccountById(@PathVariable String id) {
-    return new AccountDetailResponse(
-      id,
-      PRIMARY_ACCOUNT_DETAIL.nickname(),
-      PRIMARY_ACCOUNT_DETAIL.accountTypeLabel(),
-      PRIMARY_ACCOUNT_DETAIL.currency(),
-      PRIMARY_ACCOUNT_DETAIL.balance(),
-      PRIMARY_ACCOUNT_DETAIL.accountNumber(),
-      PRIMARY_ACCOUNT_DETAIL.ifscCode(),
-      PRIMARY_ACCOUNT_DETAIL.openedOn(),
-      PRIMARY_ACCOUNT_DETAIL.homeBranch(),
-      PRIMARY_ACCOUNT_DETAIL.status()
-    );
+    return accountsService.getAccountById(id);
   }
 
-  public record AccountResponse(
-    String id,
-    String nickname,
-    String accountType,
-    String lastFourDigits,
-    BigDecimal balance,
-    String currency,
-    double monthlyChangePercent,
-    String verifiedLabel
-  ) {}
+  @PostMapping("/{id}/freeze")
+  public OtpChallengeResponse requestFreeze(
+    @PathVariable String id,
+    @Valid @RequestBody FreezeAccountRequest request
+  ) {
+    return accountsService.requestFreeze(id, request);
+  }
 
-  public record TransactionResponse(
-    String id,
-    String merchant,
-    String category,
-    String date,
-    BigDecimal amount,
-    boolean verified
-  ) {}
+  @PostMapping("/{id}/unfreeze")
+  public OtpChallengeResponse requestUnfreeze(@PathVariable String id) {
+    return accountsService.requestUnfreeze(id);
+  }
 
-  public record AccountDetailResponse(
-    String id,
-    String nickname,
-    String accountTypeLabel,
-    String currency,
-    BigDecimal balance,
-    String accountNumber,
-    String ifscCode,
-    String openedOn,
-    String homeBranch,
-    String status
-  ) {}
+  @PostMapping("/changes/{changeRequestId}/confirm")
+  public AccountDetailResponse confirmChange(
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody ConfirmChangeRequest request
+  ) {
+    return accountsService.confirmChange(changeRequestId, request);
+  }
+
+  @GetMapping("/{id}/statement")
+  public ResponseEntity<byte[]> downloadStatement(@PathVariable String id) {
+    return ResponseEntity.ok()
+      .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"securebank-statement.pdf\"")
+      .contentType(MediaType.APPLICATION_PDF)
+      .body(accountsService.downloadStatement(id));
+  }
 }

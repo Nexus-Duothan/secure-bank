@@ -3,7 +3,19 @@ package com.securebank.user.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securebank.user.config.UserServiceProperties;
-import com.securebank.user.dto.*;
+import com.securebank.user.dto.AdminRoleChangePayload;
+import com.securebank.user.dto.AdminStatusChangePayload;
+import com.securebank.user.dto.ConfirmChangeRequest;
+import com.securebank.user.dto.DeviceActionRequest;
+import com.securebank.user.dto.DeviceLinkRequest;
+import com.securebank.user.dto.NotificationPreferencesResponse;
+import com.securebank.user.dto.NotificationPreferencesUpdateRequest;
+import com.securebank.user.dto.OtpChallengeResponse;
+import com.securebank.user.dto.ProfileUpdateRequest;
+import com.securebank.user.dto.RoleUpdateRequest;
+import com.securebank.user.dto.StatusUpdateRequest;
+import com.securebank.user.dto.UserDeviceResponse;
+import com.securebank.user.dto.UserProfileResponse;
 import com.securebank.user.entity.PendingUserChange;
 import com.securebank.user.entity.UserDevice;
 import com.securebank.user.entity.UserProfile;
@@ -41,6 +53,13 @@ public class UserService {
   private static final SecureRandom OTP_RANDOM = new SecureRandom();
   private static final int OTP_BOUND = 1_000_000;
   private static final int MAX_TRUSTED_DEVICES = 3;
+
+  private record OtpDelivery(
+    String channel,
+    String destination,
+    String targetLabel,
+    String message
+  ) {}
 
   private final UserProfileRepository userProfileRepository;
   private final UserDeviceRepository userDeviceRepository;
@@ -110,27 +129,6 @@ public class UserService {
     return createChallenge(profile, ChangeRequestType.REVOKE_DEVICE, request);
   }
 
-  @Transactional
-  public OtpChallengeResponse requestAccountFreeze(
-    CallerIdentity caller,
-    FreezeAccountRequest request
-  ) {
-    UserProfile profile = findUser(caller.userId());
-    if (profile.isFrozen()) {
-      throw new ConflictException("Account is already frozen");
-    }
-    return createChallenge(profile, ChangeRequestType.FREEZE_ACCOUNT, request);
-  }
-
-  @Transactional
-  public OtpChallengeResponse requestAccountUnfreeze(CallerIdentity caller) {
-    UserProfile profile = findUser(caller.userId());
-    if (!profile.isFrozen()) {
-      throw new ConflictException("Account is not frozen");
-    }
-    return createChallenge(profile, ChangeRequestType.UNFREEZE_ACCOUNT, null);
-  }
-
   /**
    * Applies a staged change once its one-time code checks out.
    *
@@ -146,6 +144,10 @@ public class UserService {
     PendingUserChange change = pendingUserChangeRepository
       .findByIdAndUserProfileId(changeRequestId, caller.userId())
       .orElseThrow(() -> new EntityNotFoundException("Change request not found"));
+    if (isAdminChange(change.getType())) {
+      // Administrative changes have their own confirm endpoint with staff checks.
+      throw new EntityNotFoundException("Change request not found");
+    }
 
     verifyOtp(change, request.otpCode());
 
@@ -204,8 +206,112 @@ public class UserService {
   ) {
     caller.requireAnyRole(Role.ADMIN, Role.BANK_OFFICER);
     UserProfile profile = findUser(userId);
-    applyStatus(profile, request.status(), "Set to " + request.status() + " by " + caller.role());
+    applyUserStatus(profile, request.status());
     return toProfileResponse(userProfileRepository.save(profile));
+  }
+
+  /**
+   * Stages a role change behind an OTP sent to the administrator performing it (FR-04: TOTP/OTP on
+   * high-risk actions). The change only lands via {@link #confirmAdminChange}.
+   */
+  @Transactional
+  public OtpChallengeResponse requestRoleChange(
+    CallerIdentity caller,
+    UUID userId,
+    RoleUpdateRequest request
+  ) {
+    caller.requireAnyRole(Role.ADMIN);
+    if (caller.is(userId)) {
+      throw new AccessDeniedException("An administrator cannot change their own role");
+    }
+    UserProfile target = findUser(userId);
+    UserProfile staffProfile = findUser(caller.userId());
+    return createChallenge(
+      staffProfile,
+      ChangeRequestType.ADMIN_UPDATE_ROLE,
+      new AdminRoleChangePayload(target.getId(), request.role())
+    );
+  }
+
+  /** Stages an account status change (hold, suspend, reactivate) behind an OTP for the caller. */
+  @Transactional
+  public OtpChallengeResponse requestStatusChange(
+    CallerIdentity caller,
+    UUID userId,
+    StatusUpdateRequest request
+  ) {
+    caller.requireAnyRole(Role.ADMIN, Role.BANK_OFFICER);
+    UserProfile target = findUser(userId);
+    UserProfile staffProfile = findUser(caller.userId());
+    return createChallenge(
+      staffProfile,
+      ChangeRequestType.ADMIN_UPDATE_STATUS,
+      new AdminStatusChangePayload(target.getId(), request.status())
+    );
+  }
+
+  /**
+   * Applies a staged administrative change once the staff member's one-time code checks out. The
+   * role checks run again here through {@link #updateRole}/{@link #updateStatus}, so a demoted
+   * caller cannot land a change staged while they still held the role.
+   */
+  @Transactional(noRollbackFor = OtpVerificationException.class)
+  public UserProfileResponse confirmAdminChange(
+    CallerIdentity caller,
+    UUID changeRequestId,
+    ConfirmChangeRequest request
+  ) {
+    PendingUserChange change = pendingUserChangeRepository
+      .findByIdAndUserProfileId(changeRequestId, caller.userId())
+      .orElseThrow(() -> new EntityNotFoundException("Change request not found"));
+    if (!isAdminChange(change.getType())) {
+      throw new EntityNotFoundException("Change request not found");
+    }
+
+    verifyOtp(change, request.otpCode());
+
+    UserProfileResponse target;
+    try {
+      target = switch (change.getType()) {
+        case ADMIN_UPDATE_ROLE -> {
+          AdminRoleChangePayload payload = objectMapper.readValue(
+            change.getPayloadJson(),
+            AdminRoleChangePayload.class
+          );
+          yield updateRole(caller, payload.targetUserId(), new RoleUpdateRequest(payload.role()));
+        }
+        case ADMIN_UPDATE_STATUS -> {
+          AdminStatusChangePayload payload = objectMapper.readValue(
+            change.getPayloadJson(),
+            AdminStatusChangePayload.class
+          );
+          yield updateStatus(
+            caller,
+            payload.targetUserId(),
+            new StatusUpdateRequest(payload.status())
+          );
+        }
+        default -> throw new EntityNotFoundException("Change request not found");
+      };
+    } catch (JsonProcessingException exception) {
+      throw new IllegalStateException("Unable to read pending change payload", exception);
+    }
+
+    change.setConfirmed(true);
+    change.setConfirmedAt(Instant.now());
+    pendingUserChangeRepository.save(change);
+    userSecurityAlertService.sendCriticalChangeAlert(
+      findUser(target.id()),
+      change.getType(),
+      describeConfirmedChange(findUser(caller.userId()), change.getType())
+    );
+    return target;
+  }
+
+  private boolean isAdminChange(ChangeRequestType type) {
+    return (
+      type == ChangeRequestType.ADMIN_UPDATE_ROLE || type == ChangeRequestType.ADMIN_UPDATE_STATUS
+    );
   }
 
   // --------------------------------------------------------------------
@@ -218,24 +324,25 @@ public class UserService {
     Object payload
   ) {
     String code = generateOtpCode();
+    Instant expiresAt = Instant.now().plus(properties.otp().ttl());
     PendingUserChange saved = pendingUserChangeRepository.save(
       PendingUserChange.builder()
         .userProfileId(profile.getId())
         .type(type)
         .payloadJson(writePayload(payload))
         .otpHash(otpEncoder.encode(code))
-        .expiresAt(Instant.now().plus(properties.otp().ttl()))
+        .expiresAt(expiresAt)
         .build()
     );
+    OtpDelivery delivery = resolveOtpDelivery(profile);
+    userSecurityAlertService.sendOtpChallenge(profile, type, code, expiresAt);
 
-    // Delivery over the customer's preferred channel is the Notification Service's job (FR-29);
-    // until that hop exists the code is only echoed back when explicitly enabled for local demos.
     return new OtpChallengeResponse(
       saved.getId(),
       type,
-      maskEmail(profile.getEmail()),
+      delivery.targetLabel(),
       saved.getExpiresAt(),
-      "Enter the six digit code sent to your registered contact to confirm this change.",
+      delivery.message(),
       properties.otp().exposeCode() ? code : null
     );
   }
@@ -265,6 +372,20 @@ public class UserService {
 
   private String generateOtpCode() {
     return "%06d".formatted(OTP_RANDOM.nextInt(OTP_BOUND));
+  }
+
+  private OtpDelivery resolveOtpDelivery(UserProfile profile) {
+    if (!hasText(profile.getPhoneNumber())) {
+      throw new ConflictException(
+        "A verified mobile number is required before SecureBank can send OTP confirmations"
+      );
+    }
+    return new OtpDelivery(
+      "SMS",
+      profile.getPhoneNumber().trim(),
+      maskPhone(profile.getPhoneNumber()),
+      "Enter the six digit code sent to your registered mobile number to confirm this change."
+    );
   }
 
   // --------------------------------------------------------------------
@@ -297,12 +418,6 @@ public class UserService {
           profile,
           objectMapper.readValue(change.getPayloadJson(), DeviceActionRequest.class)
         );
-        case FREEZE_ACCOUNT -> applyStatus(
-          profile,
-          UserStatus.FROZEN,
-          objectMapper.readValue(change.getPayloadJson(), FreezeAccountRequest.class).reason()
-        );
-        case UNFREEZE_ACCOUNT -> applyStatus(profile, UserStatus.ACTIVE, null);
       }
     } catch (JsonProcessingException exception) {
       throw new IllegalStateException("Unable to read pending change payload", exception);
@@ -371,19 +486,8 @@ public class UserService {
     userDeviceRepository.save(device);
   }
 
-  private void applyStatus(UserProfile profile, UserStatus status, String reason) {
-    boolean freezing = status == UserStatus.FROZEN;
+  private void applyUserStatus(UserProfile profile, UserStatus status) {
     profile.setStatus(status);
-    profile.setFrozen(freezing);
-    if (freezing) {
-      if (profile.getFrozenAt() == null) {
-        profile.setFrozenAt(Instant.now());
-      }
-      profile.setFreezeReason(reason);
-    } else {
-      profile.setFrozenAt(null);
-      profile.setFreezeReason(null);
-    }
   }
 
   // --------------------------------------------------------------------
@@ -438,8 +542,6 @@ public class UserService {
       profile.getRole(),
       profile.getStatus(),
       profile.isIdVerified(),
-      profile.isFrozen(),
-      profile.getFreezeReason(),
       new NotificationPreferencesResponse(
         profile.isEmailNotifications(),
         profile.isSmsNotifications(),
@@ -480,6 +582,23 @@ public class UserService {
     return email.charAt(0) + "***" + email.substring(at - 1);
   }
 
+  private String maskPhone(String phoneNumber) {
+    if (phoneNumber == null) {
+      return null;
+    }
+    String phone = phoneNumber.trim();
+    if (phone.length() <= 4) {
+      return phone;
+    }
+    int prefixLength = phone.startsWith("+") ? Math.min(3, phone.length() - 4) : 2;
+    prefixLength = Math.max(1, prefixLength);
+    return phone.substring(0, prefixLength) + "***" + phone.substring(phone.length() - 4);
+  }
+
+  private boolean hasText(String value) {
+    return value != null && !value.isBlank();
+  }
+
   private String describeConfirmedChange(UserProfile profile, ChangeRequestType type) {
     return switch (type) {
       case UPDATE_PROFILE -> "Contact details for " +
@@ -489,8 +608,12 @@ public class UserService {
       case LINK_DEVICE -> "A new device sign-in request was recorded and is awaiting verification.";
       case TRUST_DEVICE -> "A new device was verified and linked to the account.";
       case REVOKE_DEVICE -> "A previously linked device was removed from the account.";
-      case FREEZE_ACCOUNT -> "An account freeze request was confirmed for customer protection.";
-      case UNFREEZE_ACCOUNT -> "The account was reactivated after successful OTP confirmation.";
+      case ADMIN_UPDATE_ROLE -> "The role on this account was changed by " +
+        profile.getFullName() +
+        " after OTP confirmation.";
+      case ADMIN_UPDATE_STATUS -> "The status of this account was changed by " +
+        profile.getFullName() +
+        " after OTP confirmation.";
     };
   }
 }

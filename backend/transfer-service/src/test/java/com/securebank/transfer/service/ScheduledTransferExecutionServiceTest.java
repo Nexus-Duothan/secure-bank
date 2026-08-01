@@ -40,7 +40,10 @@ class ScheduledTransferExecutionServiceTest {
 
   @BeforeEach
   void setUp() {
-    executionService = new ScheduledTransferExecutionService(scheduledTransferRepository, transferService);
+    executionService = new ScheduledTransferExecutionService(
+      scheduledTransferRepository,
+      transferService
+    );
   }
 
   private ScheduledTransfer.ScheduledTransferBuilder dueSchedule(ScheduleFrequency frequency) {
@@ -108,8 +111,12 @@ class ScheduledTransferExecutionServiceTest {
 
   @Test
   void executeDue_doesNothing_whenScheduleNoLongerActive() {
-    ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME).status(ScheduleStatus.PAUSED).build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME)
+      .status(ScheduleStatus.PAUSED)
+      .build();
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
 
     executionService.executeDue(schedule.getId());
 
@@ -122,7 +129,9 @@ class ScheduledTransferExecutionServiceTest {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME)
       .nextRunAt(Instant.now().plusSeconds(3600))
       .build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
 
     executionService.executeDue(schedule.getId());
 
@@ -132,12 +141,14 @@ class ScheduledTransferExecutionServiceTest {
   @Test
   void executeDue_marksOneTimeScheduleCompleted_onSuccess() {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME).build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(completedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());
@@ -149,12 +160,14 @@ class ScheduledTransferExecutionServiceTest {
   @Test
   void executeDue_marksOneTimeScheduleFailed_whenTransferFails() {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME).build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(failedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());
@@ -167,12 +180,14 @@ class ScheduledTransferExecutionServiceTest {
   void executeDue_advancesWeeklyScheduleAndStaysActive_onSuccess() {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.WEEKLY).build();
     Instant originalNextRun = schedule.getNextRunAt();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(completedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());
@@ -185,12 +200,14 @@ class ScheduledTransferExecutionServiceTest {
   void executeDue_advancesWeeklyScheduleAndStaysActive_evenWhenExecutionFails() {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.WEEKLY).build();
     Instant originalNextRun = schedule.getNextRunAt();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(failedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());
@@ -205,12 +222,14 @@ class ScheduledTransferExecutionServiceTest {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.WEEKLY)
       .endDate(Instant.now().plusSeconds(3600))
       .build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(completedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());
@@ -221,12 +240,14 @@ class ScheduledTransferExecutionServiceTest {
   @Test
   void executeDue_usesOccurrenceScopedIdempotencyKey() {
     ScheduledTransfer schedule = dueSchedule(ScheduleFrequency.ONE_TIME).build();
-    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(Optional.of(schedule));
+    when(scheduledTransferRepository.findForUpdateById(schedule.getId())).thenReturn(
+      Optional.of(schedule)
+    );
     UUID transferId = UUID.randomUUID();
     when(transferService.quote(any(), any(), anyString())).thenReturn(pendingTransfer(transferId));
     when(transferService.confirm(any(), eq(transferId))).thenReturn(completedTransfer());
-    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(
-      invocation -> invocation.getArgument(0)
+    when(scheduledTransferRepository.save(any(ScheduledTransfer.class))).thenAnswer(invocation ->
+      invocation.getArgument(0)
     );
 
     executionService.executeDue(schedule.getId());

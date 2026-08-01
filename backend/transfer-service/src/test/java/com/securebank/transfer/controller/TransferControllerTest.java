@@ -1,5 +1,7 @@
 package com.securebank.transfer.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -27,9 +29,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -72,7 +71,12 @@ class TransferControllerTest {
 
   @Test
   void quote_returnsPendingConfirmation_whenRequestIsValid() throws Exception {
-    TransferQuoteRequest request = new TransferQuoteRequest("acc-demo-primary", "acc-other", new BigDecimal("100"), "rent");
+    TransferQuoteRequest request = new TransferQuoteRequest(
+      "acc-demo-primary",
+      "acc-other",
+      new BigDecimal("100"),
+      "rent"
+    );
 
     mockMvc
       .perform(
@@ -88,7 +92,12 @@ class TransferControllerTest {
 
   @Test
   void quote_isRejected_withoutAnAccessToken() throws Exception {
-    TransferQuoteRequest request = new TransferQuoteRequest("acc-demo-primary", "acc-other", new BigDecimal("100"), null);
+    TransferQuoteRequest request = new TransferQuoteRequest(
+      "acc-demo-primary",
+      "acc-other",
+      new BigDecimal("100"),
+      null
+    );
 
     mockMvc
       .perform(
@@ -101,7 +110,12 @@ class TransferControllerTest {
 
   @Test
   void quote_thenConfirm_completesTheTransfer() throws Exception {
-    TransferQuoteRequest request = new TransferQuoteRequest("acc-demo-primary", "acc-other", new BigDecimal("50"), null);
+    TransferQuoteRequest request = new TransferQuoteRequest(
+      "acc-demo-primary",
+      "acc-other",
+      new BigDecimal("50"),
+      null
+    );
 
     String quoteBody = mockMvc
       .perform(
@@ -120,8 +134,10 @@ class TransferControllerTest {
 
     mockMvc
       .perform(
-        post("/api/v1/transfers/{id}/confirm", transferId)
-          .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+        post("/api/v1/transfers/{id}/confirm", transferId).header(
+          HttpHeaders.AUTHORIZATION,
+          "Bearer " + accessToken()
+        )
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("COMPLETED"))
@@ -131,7 +147,12 @@ class TransferControllerTest {
 
   @Test
   void quote_rejectsAmountAboveThePerTransactionLimit() throws Exception {
-    TransferQuoteRequest request = new TransferQuoteRequest("acc-demo-primary", "acc-other", new BigDecimal("5000"), null);
+    TransferQuoteRequest request = new TransferQuoteRequest(
+      "acc-demo-primary",
+      "acc-other",
+      new BigDecimal("5000"),
+      null
+    );
 
     mockMvc
       .perform(

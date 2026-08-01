@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Typography, theme } from 'antd';
 import accountsService, { type Account } from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import transferService, { type TransferResponse } from '../../api/transferService';
 import { getApiErrorMessage } from '../../api/apiError';
 import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
@@ -42,9 +43,15 @@ const TransferMoney: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     accountsService
-      .getPrimaryAccount()
+      .getAccounts()
       .then((data) => {
-        if (!cancelled) setFromAccount(data);
+        if (!cancelled && data.length > 0) {
+          const selected =
+            data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
+            data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setFromAccount(selected);
+        }
       })
       .catch(() => {
         // Endpoint not available yet - fall back to the placeholder shown above.
@@ -73,7 +80,9 @@ const TransferMoney: React.FC = () => {
       setQuote(response);
       setStep('review');
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to start this transfer right now. Please try again.'));
+      setError(
+        getApiErrorMessage(err, 'Unable to start this transfer right now. Please try again.')
+      );
     } finally {
       setQuoting(false);
     }
@@ -94,7 +103,9 @@ const TransferMoney: React.FC = () => {
       }
       navigate('/dashboard');
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to confirm this transfer right now. Please try again.'));
+      setError(
+        getApiErrorMessage(err, 'Unable to confirm this transfer right now. Please try again.')
+      );
     } finally {
       setConfirming(false);
     }
@@ -151,7 +162,8 @@ const TransferMoney: React.FC = () => {
                       color: token.colorTextTertiary,
                     }}
                   >
-                    {fromAccount.nickname} - {formatCurrency(fromAccount.currency, fromAccount.balance)}
+                    {fromAccount.nickname} -{' '}
+                    {formatCurrency(fromAccount.currency, fromAccount.balance)}
                   </div>
                 </Form.Item>
 
@@ -178,7 +190,9 @@ const TransferMoney: React.FC = () => {
                     min={0}
                     placeholder={`${fromAccount.currency} 0.00`}
                     formatter={(value) =>
-                      value === undefined || value === null ? '' : `${fromAccount.currency} ${value}`
+                      value === undefined || value === null
+                        ? ''
+                        : `${fromAccount.currency} ${value}`
                     }
                     parser={(value) => {
                       const numeric = Number((value ?? '').replace(/[^0-9.]/g, ''));

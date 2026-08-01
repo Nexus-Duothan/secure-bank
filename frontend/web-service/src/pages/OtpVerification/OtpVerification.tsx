@@ -3,7 +3,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Input, Typography, theme } from 'antd';
 import type { AxiosError } from 'axios';
 import { authService } from '../../api/authService';
+import { getApiErrorMessage } from '../../api/apiError';
+import accountsService from '../../api/accountsService';
+import adminService from '../../api/adminService';
 import tokenStorage from '../../api/tokenStorage';
+import sessionUser, { homePathForRole } from '../../api/sessionUser';
+import userService from '../../api/userService';
+import accountSelection from '../../api/accountSelection';
+import type { Role } from '../../types';
+import type { OtpChallenge } from '../../types';
 import AuthLayout from '../../components/AuthLayout';
 import TrustIndicator from '../../components/TrustIndicator';
 import { formatCountdown, useCountdown } from '../../hooks/useCountdown';
@@ -13,16 +21,92 @@ const { Text, Link } = Typography;
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
-interface LocationState {
+interface LoginLocationState {
   preAuthToken?: string;
   usernameOrEmail?: string;
 }
+
+interface ProfileChangeLocationState {
+  flow: 'profile-change';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+}
+
+interface AccountChangeLocationState {
+  flow: 'account-change';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+}
+
+interface AccountLinkLocationState {
+  flow: 'account-link';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+}
+
+interface AccountOpeningLocationState {
+  flow: 'account-opening';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+}
+
+interface CreditCardLinkLocationState {
+  flow: 'credit-card-link';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+  accountId: string;
+}
+
+interface AdminChangeLocationState {
+  flow: 'admin-change';
+  challenge: OtpChallenge;
+  successMessage: string;
+  returnTo: string;
+}
+
+type LocationState =
+  | LoginLocationState
+  | ProfileChangeLocationState
+  | AccountChangeLocationState
+  | AccountLinkLocationState
+  | AccountOpeningLocationState
+  | CreditCardLinkLocationState
+  | AdminChangeLocationState;
 
 const OtpVerification: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();
-  const { preAuthToken } = (location.state as LocationState | null) ?? {};
+  const routeState = (location.state as LocationState | null) ?? null;
+  const changeRouteState = routeState && 'flow' in routeState ? routeState : null;
+  const loginRouteState = routeState && !('flow' in routeState) ? routeState : null;
+  const profileChangeFlow = changeRouteState?.flow === 'profile-change';
+  const accountChangeFlow = changeRouteState?.flow === 'account-change';
+  const accountLinkFlow = changeRouteState?.flow === 'account-link';
+  const accountOpeningFlow = changeRouteState?.flow === 'account-opening';
+  const creditCardLinkFlow = changeRouteState?.flow === 'credit-card-link';
+  const adminChangeFlow = changeRouteState?.flow === 'admin-change';
+  const accountOrProfileChangeFlow =
+    profileChangeFlow ||
+    accountChangeFlow ||
+    accountLinkFlow ||
+    accountOpeningFlow ||
+    creditCardLinkFlow ||
+    adminChangeFlow;
+  const preAuthToken = !accountOrProfileChangeFlow ? loginRouteState?.preAuthToken : undefined;
+  const accountOrProfileChallenge = changeRouteState?.challenge ?? null;
+  const changeFlowBackPath = accountOpeningFlow
+    ? '/accounts/open'
+    : creditCardLinkFlow
+      ? '/accounts/cards/link'
+      : accountLinkFlow
+        ? '/accounts/link'
+        : (changeRouteState?.returnTo ?? '/profile');
 
   const [otp, setOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -30,12 +114,33 @@ const OtpVerification: React.FC = () => {
   const { secondsLeft, restart, isFinished } = useCountdown(RESEND_SECONDS);
 
   useEffect(() => {
-    if (!preAuthToken) {
+    if (accountOrProfileChangeFlow && !accountOrProfileChallenge) {
+      const fallbackPath = accountOpeningFlow
+        ? '/accounts/open'
+        : creditCardLinkFlow
+          ? '/accounts/cards/link'
+          : accountLinkFlow
+            ? '/accounts/link'
+            : '/profile';
+      navigate(fallbackPath, { replace: true });
+      return;
+    }
+
+    if (!accountOrProfileChangeFlow && !preAuthToken) {
       navigate('/login', { replace: true });
     }
-  }, [preAuthToken, navigate]);
+  }, [
+    preAuthToken,
+    accountOrProfileChallenge,
+    accountOrProfileChangeFlow,
+    accountLinkFlow,
+    accountOpeningFlow,
+    creditCardLinkFlow,
+    navigate,
+  ]);
 
   const handleResend = () => {
+    if (accountOrProfileChangeFlow) return;
     if (!isFinished) return;
     setOtp('');
     setError(null);
@@ -43,22 +148,88 @@ const OtpVerification: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!preAuthToken || otp.length !== OTP_LENGTH) return;
+    if (otp.length !== OTP_LENGTH) return;
     setSubmitting(true);
     setError(null);
     try {
-      const response = await authService.verifyOtp({ preAuthToken, totpCode: otp });
-      tokenStorage.setTokens(response.accessToken, response.refreshToken);
-      navigate('/dashboard');
+      if (profileChangeFlow && accountOrProfileChallenge) {
+        await userService.confirmChange(accountOrProfileChallenge.changeRequestId, otp);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (accountChangeFlow && accountOrProfileChallenge) {
+        await accountsService.confirmChange(accountOrProfileChallenge.changeRequestId, otp);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (accountLinkFlow && accountOrProfileChallenge) {
+        const response = await accountsService.confirmAccountLink(
+          accountOrProfileChallenge.changeRequestId,
+          otp
+        );
+        accountSelection.setSelectedAccountId(response.account.id);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (accountOpeningFlow && accountOrProfileChallenge) {
+        const response = await accountsService.confirmAccountOpening(
+          accountOrProfileChallenge.changeRequestId,
+          otp
+        );
+        accountSelection.setSelectedAccountId(response.account.id);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (creditCardLinkFlow && accountOrProfileChallenge) {
+        await accountsService.confirmCreditCardLink(accountOrProfileChallenge.changeRequestId, otp);
+        accountSelection.setSelectedAccountId(changeRouteState.accountId);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (adminChangeFlow && accountOrProfileChallenge) {
+        await adminService.confirmChange(accountOrProfileChallenge.changeRequestId, otp);
+        navigate(changeRouteState.returnTo, {
+          replace: true,
+          state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (preAuthToken) {
+        const response = await authService.verifyOtp({ preAuthToken, totpCode: otp });
+        tokenStorage.setTokens(response.accessToken, response.refreshToken);
+        const role = (response.role as Role) || 'CUSTOMER';
+        sessionUser.set({
+          userId: response.userId,
+          username: response.username,
+          role,
+          status: response.status,
+        });
+        // Staff roles land on their own portal, never the customer dashboard.
+        navigate(homePathForRole(role));
+      }
     } catch (err) {
-      const axiosError = err as AxiosError<{ message?: string }>;
-      setError(axiosError.response?.data?.message ?? 'Invalid or expired code. Please try again.');
+      if (accountOrProfileChangeFlow) {
+        const axiosError = err as AxiosError<{ message?: string }>;
+        setError(
+          axiosError.response?.status === 404
+            ? 'This verification request is no longer active. Go back and request a new code.'
+            : getApiErrorMessage(err, 'Invalid or expired code. Please try again.')
+        );
+      } else {
+        const axiosError = err as AxiosError<{ message?: string }>;
+        setError(
+          axiosError.response?.data?.message ?? 'Invalid or expired code. Please try again.'
+        );
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!preAuthToken) {
+  if (!accountOrProfileChangeFlow && !preAuthToken) {
     return null;
   }
 
@@ -69,6 +240,27 @@ const OtpVerification: React.FC = () => {
         style={{ boxShadow: '0 8px 24px rgba(11, 27, 43, 0.06)' }}
       >
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
+
+        {accountOrProfileChangeFlow && accountOrProfileChallenge?.message && (
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 16,
+              color: token.colorTextSecondary,
+              fontSize: 13,
+            }}
+          >
+            {accountOrProfileChallenge.message}
+          </Text>
+        )}
+        {accountOrProfileChangeFlow && accountOrProfileChallenge?.demoCode && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={`Demo code: ${accountOrProfileChallenge.demoCode}`}
+          />
+        )}
 
         <div className="otp-boxes">
           <Input.OTP
@@ -83,15 +275,29 @@ const OtpVerification: React.FC = () => {
         </div>
 
         <Flex style={{ marginTop: 20, marginBottom: 24 }}>
-          <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
-          {isFinished ? (
-            <Link onClick={handleResend} style={{ color: token.colorPrimary }}>
-              Resend code
-            </Link>
+          {accountOrProfileChangeFlow ? (
+            <>
+              <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
+              <Link
+                onClick={() => navigate(changeFlowBackPath, { replace: true })}
+                style={{ color: token.colorPrimary }}
+              >
+                Go back
+              </Link>
+            </>
           ) : (
-            <Text style={{ color: token.colorTextTertiary }}>
-              Resend in {formatCountdown(secondsLeft)}
-            </Text>
+            <>
+              <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
+              {isFinished ? (
+                <Link onClick={handleResend} style={{ color: token.colorPrimary }}>
+                  Resend code
+                </Link>
+              ) : (
+                <Text style={{ color: token.colorTextTertiary }}>
+                  Resend in {formatCountdown(secondsLeft)}
+                </Text>
+              )}
+            </>
           )}
         </Flex>
 
@@ -107,7 +313,15 @@ const OtpVerification: React.FC = () => {
         </Button>
       </Card>
 
-      <TrustIndicator text="This device will be remembered for 30 days" />
+      <TrustIndicator
+        text={
+          accountOrProfileChangeFlow
+            ? accountLinkFlow || creditCardLinkFlow
+              ? 'SecureBank confirms account ownership with one-time verification.'
+              : 'SecureBank protects account changes with one-time verification.'
+            : 'This device will be remembered for 30 days'
+        }
+      />
     </AuthLayout>
   );
 };
