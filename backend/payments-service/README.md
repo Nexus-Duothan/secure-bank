@@ -1,32 +1,140 @@
 # Payments Service (`payments-service`)
 
-The **Payments Service** processes Account-to-Vendor (A2V) external payments, merchant settlements, and QR code transaction flows.
+The **Payments Service** processes Account-to-Vendor (A2V) external payments, merchant settlement, QR code transactions, and digital receipts. Built on Spring Boot 3.3.2 and JDK 21 LTS, it validates and holds the JWTs issued by `auth-service` (sharing its `jwt.secret`, no local login of its own) and delegates fraud detection to the real, already-built `security/audit-recovery-service`.
 
 ---
 
-## 🎯 What to Develop
+## 🎯 Implemented Features & SRS Mapping
 
-- **External Merchant Payments (A2V)**: Settle transactions between customers and registered merchants (`FR-15`).
-- **QR-Based Payments**: Decode and process QR merchant code payments (`FR-20`).
-- **Digital Receipts**: Generate cryptographically reference-numbered digital transaction receipts (`FR-21`).
-- **Fraud Detection Hook**: Intercept suspicious high-velocity vendor payments (`FR-31`).
-
----
-
-## 🛠️ Prerequisites
-
-- JDK 21 LTS
-- Apache Maven 3.9+
-- PostgreSQL 16 (`localhost:5432`)
-- Apache Kafka (`localhost:9092`)
+- **Merchant Registration** (`FR-08`, `FR-15`): Self-service registration for users with the `MERCHANT` role — merchants are users, not a separate identity system (`auth-service`'s `Role` enum). Generates a unique `merchant_code` (e.g. `MCH-7F3K9Q`).
+- **External Merchant Payments (A2V)** (`FR-15`): `POST /pay` settles a customer payment against a registered, active merchant.
+- **QR-Based Payments** (`FR-20`): `POST /qr/pay` decodes a base64-encoded JSON QR payload (a format invented for this service — see below) and settles against the embedded or overridden amount.
+- **Digital Receipts** (`FR-21`): Every completed payment gets a SHA-256-derived, cryptographically reference-numbered receipt (`RCPT-XXXXXXXXXXXXXXXX`), retrievable via `GET /{id}/receipt`.
+- **Fraud Detection Hook** (`FR-31`): After every vendor payment, this service posts an audit entry to `security/audit-recovery-service` (Rust/Axum, port `8089`) and checks its live anomaly report. If the payer trips the high-velocity threshold (≥10 events in a rolling 1-hour window, `risk_score ≥ 75`), the payment is flipped from `COMPLETED` to `HELD_FOR_REVIEW` for a `BANK_OFFICER`/`ADMIN` to resolve via `POST /officer/{id}/review`.
+- **Event Publishing**: Publishes `PaymentCompletedEvent`/`PaymentHeldEvent` to Kafka (`payments.completed.v1`, `payments.held-for-review.v1`) — see "Kafka Event Schema" below. No consumer exists yet anywhere in the repo; this is publish-only groundwork.
 
 ---
 
-## 🚀 How to Setup & Run
+## 📡 REST API Endpoint Specification
+
+All endpoints are exposed under `/api/v1/payments`:
+
+| Method | Endpoint                               | Authorization                  | Description                                                            |
+| :----- | :------------------------------------- | :----------------------------- | :--------------------------------------------------------------------- |
+| `POST` | `/api/v1/payments/pay`                 | Authenticated                  | Pay a registered merchant directly by `merchantCode`.                  |
+| `POST` | `/api/v1/payments/qr/pay`              | Authenticated                  | Pay by scanning/submitting a merchant QR payload.                      |
+| `GET`  | `/api/v1/payments/{id}`                | Owner / `BANK_OFFICER`/`ADMIN` | Fetch a single payment.                                                |
+| `GET`  | `/api/v1/payments/{id}/receipt`        | Owner                          | Fetch the digital receipt for a completed/held payment.                |
+| `GET`  | `/api/v1/payments`                     | Authenticated                  | Paginated payment history for the caller (`?status=` filter optional). |
+| `POST` | `/api/v1/payments/merchants/register`  | `MERCHANT`                     | Self-service merchant registration (one profile per user).             |
+| `GET`  | `/api/v1/payments/merchants/{code}`    | Authenticated                  | Look up an active merchant by code before paying.                      |
+| `GET`  | `/api/v1/payments/officer/held`        | `BANK_OFFICER` / `ADMIN`       | List all payments currently `HELD_FOR_REVIEW`.                         |
+| `POST` | `/api/v1/payments/officer/{id}/review` | `BANK_OFFICER` / `ADMIN`       | Approve (→ `COMPLETED`) or decline (→ `DECLINED`) a held payment.      |
+
+---
+
+## 🔌 New Integration Conventions Introduced by This Service
+
+No prior service in this repo calls another service over HTTP or publishes to Kafka, so the following are new, documented-here conventions rather than established patterns being followed:
+
+### Accounts Service Integration (not yet built)
+
+`accounts-service` is still a bare scaffold. `AccountsServiceClient` is built against an **assumed** contract so it's ready once that service ships:
+
+```
+POST http://localhost:8084/api/v1/accounts/{accountId}/debit
+Body: { "amount": 1500.00, "currency": "LKR", "reference": "<paymentId>" }
+
+200 -> { "accountId": "...", "newBalance": 46731.76 }   (debit applied)
+404 -> account not found
+409 -> insufficient funds
+```
+
+Until `accounts-service` exists, every `/pay` and `/qr/pay` call will fail with `503 Service Unavailable` in a real (non-test) environment — this is expected, not a bug. The debit call is load-bearing: it is never skipped, and its failure is never silently swallowed, because money must actually move before a payment is marked `COMPLETED`.
+
+**Known limitation**: if a payment is flagged as high-velocity _after_ the debit already succeeded, there is currently no reversal call back to `accounts-service` (no such API exists yet either) — the payment is held for officer review, but the debited funds are not automatically returned. Revisit once `accounts-service` ships a reversal/credit endpoint.
+
+### Audit & Fraud Hook (real, already built)
+
+`AuditRecoveryClient` calls the real `security/audit-recovery-service`:
+
+```
+POST http://127.0.0.1:8089/api/v1/audit/entries
+Header: X-Internal-Service-Key: securebank_audit_internal_secret_key_2026
+Body: { "service_name": "payments-service", "event_type": "VENDOR_PAYMENT",
+        "user_id": "<payerUserId>", "payload": { ... } }
+
+GET  http://127.0.0.1:8089/api/v1/audit/anomalies
+Header: X-Internal-Service-Key: securebank_audit_internal_secret_key_2026
+```
+
+`GET /anomalies` has no server-side `user_id` filter — it returns every currently-`ACTIVE` anomaly report, so this client filters client-side. Failures talking to `audit-recovery-service` are logged and swallowed (fail-open): a down fraud service should not block a payment whose debit already cleared.
+
+### QR Payload Format (invented — no prior convention)
+
+A SecureBank merchant QR encodes a base64 JSON object:
+
+```json
+{ "merchantCode": "MCH-7F3K9Q", "suggestedAmount": 1500.0, "currency": "LKR" }
+```
+
+`POST /qr/pay` decodes this, uses `suggestedAmount`/`currency` unless the request body overrides `amount`. The frontend must generate QR codes in this exact shape.
+
+### Kafka Event Schema (invented — no prior convention, publish-only)
+
+| Topic                         | Payload (`PaymentCompletedEvent` / `PaymentHeldEvent`)                              |
+| :---------------------------- | :---------------------------------------------------------------------------------- |
+| `payments.completed.v1`       | `paymentId, payerUserId, merchantId, amount, currency, referenceNumber, occurredAt` |
+| `payments.held-for-review.v1` | `paymentId, payerUserId, merchantId, amount, reason, occurredAt`                    |
+
+No consumer exists in the repo yet (including `notification-service`, also unbuilt) — this is groundwork for one.
+
+---
+
+## ⚙️ Environment Configuration (`application.yml`)
+
+- `server.port`: `8086`
+- `spring.datasource.url`: `jdbc:postgresql://localhost:5432/securebank`
+- `jwt.secret`: shared with `auth-service` — tokens minted there validate here.
+- `accounts-service.base-url`: `http://localhost:8084` (see limitation above)
+- `audit-service.base-url` / `audit-service.api-key`: `http://127.0.0.1:8089` / matches `security/audit-recovery-service`'s default `AUDIT_SERVICE_API_KEY`.
+- `payments.receipt-secret`: seed for the SHA-256 receipt reference generator.
+- `payments.kafka.completed-topic` / `payments.kafka.held-topic`: Kafka topic names.
+
+---
+
+## 🧪 Running Automated Tests
+
+Full `MockMvc` integration test suite (`PaymentControllerTest.java`) runs against an H2 in-memory database. `AccountsServiceClient` and `AuditRecoveryClient` are replaced by test-profile fakes (`FakeAccountsServiceClient`, `FakeAuditRecoveryClient`) so the suite needs neither a live `accounts-service` nor a live `audit-recovery-service`:
+
+```bash
+# From monorepo root
+mvn clean test -pl backend/payments-service
+
+# Or from payments-service directory
+mvn clean test
+```
+
+---
+
+## 🚀 How to Run Service Locally
+
+### 1. Start PostgreSQL and Kafka
 
 ```bash
 docker compose up -d postgres kafka
-mvn clean compile
+```
+
+### 2. (Optional but needed for real payments) Start audit-recovery-service and accounts-service
+
+```bash
+cd security/audit-recovery-service && cargo run   # fraud hook — real, already built
+# accounts-service is not built yet — /pay and /qr/pay will 503 until it exists
+```
+
+### 3. Launch Spring Boot Application
+
+```bash
 mvn spring-boot:run
 ```
 

@@ -1,15 +1,49 @@
 server:
-  port: 8086
+  port: ${SERVER_PORT:8086}
 
 spring:
   application:
     name: payments-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/securebank
-    username: securebank
-    password: securebank_secret_pass
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/securebank}
+    username: ${SPRING_DATASOURCE_USERNAME:securebank}
+    password: ${SPRING_DATASOURCE_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: ${SPRING_JPA_SHOW_SQL:true}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_payments
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Default is 60s — event publishing must fail fast, not hang the payment
+        # request, when no broker is reachable (no consumer exists yet anyway).
+        max.block.ms: 3000
+
+jwt:
+  secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
+  access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:300}
+
+# accounts-service does not exist yet (bare scaffold as of this writing). This client
+# points at the contract documented in README.md ("Accounts Service Integration") so it's
+# ready to work once that service is built.
+accounts-service:
+  base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
+
+# security/audit-recovery-service (Rust/Axum, port 8089) — the real, already-built
+# fraud/anomaly engine this service's FR-31 hook delegates to.
+audit-service:
+  base-url: ${AUDIT_SERVICE_BASE_URL:http://127.0.0.1:8089}
+  api-key: ${AUDIT_SERVICE_API_KEY:securebank_audit_internal_secret_key_2026}
+
+payments:
+  receipt-secret: ${PAYMENTS_RECEIPT_SECRET:securebank_receipt_reference_secret_2026}
+  kafka:
+    completed-topic: ${PAYMENTS_COMPLETED_TOPIC:payments.completed.v1}
+    held-topic: ${PAYMENTS_HELD_TOPIC:payments.held-for-review.v1}
