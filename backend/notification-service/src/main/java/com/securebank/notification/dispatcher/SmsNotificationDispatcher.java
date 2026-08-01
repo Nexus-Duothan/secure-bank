@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class SmsNotificationDispatcher implements NotificationDispatcher {
 
+  @Value("${notification.sms.enabled:true}")
+  private boolean enabled;
+
   @Value("${notification.sms.guaranteed-security-fallback:true}")
   private boolean guaranteedSecurityFallback;
 
@@ -27,8 +30,15 @@ public class SmsNotificationDispatcher implements NotificationDispatcher {
     String message,
     String recipientContact
   ) {
+    boolean isSecurityFallback =
+      type == NotificationType.SECURITY_ALERT && guaranteedSecurityFallback;
+    if (!enabled && !isSecurityFallback) {
+      log.debug("[SMS DISPATCHER] SMS dispatch disabled by configuration.");
+      return false;
+    }
+
     String phone = recipientContact != null ? recipientContact : "+94770000000";
-    if (type == NotificationType.SECURITY_ALERT && guaranteedSecurityFallback) {
+    if (isSecurityFallback) {
       log.info(
         "[SMS DISPATCHER - GUARANTEED SECURITY FALLBACK (FR-29)] Sent priority SMS to {} for user {}: [{}] {}",
         phone,

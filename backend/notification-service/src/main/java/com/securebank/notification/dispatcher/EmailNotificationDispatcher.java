@@ -4,11 +4,15 @@ import com.securebank.notification.enums.NotificationChannel;
 import com.securebank.notification.enums.NotificationType;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 @Slf4j
 public class EmailNotificationDispatcher implements NotificationDispatcher {
+
+  @Value("${notification.email.enabled:true}")
+  private boolean enabled;
 
   @Override
   public NotificationChannel getChannel() {
@@ -23,6 +27,10 @@ public class EmailNotificationDispatcher implements NotificationDispatcher {
     String message,
     String recipientContact
   ) {
+    if (!enabled) {
+      log.debug("[EMAIL DISPATCHER] Email dispatch disabled by configuration.");
+      return false;
+    }
     String recipient =
       recipientContact != null ? recipientContact : "user-" + userId + "@securebank.com";
     log.info(

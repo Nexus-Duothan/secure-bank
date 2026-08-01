@@ -1,6 +1,7 @@
 package com.securebank.notification.controller;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -9,8 +10,10 @@ import com.securebank.notification.dto.SendNotificationRequest;
 import com.securebank.notification.entity.Notification;
 import com.securebank.notification.enums.NotificationChannel;
 import com.securebank.notification.enums.NotificationType;
+import com.securebank.notification.kafka.NotificationEventConsumer;
 import com.securebank.notification.repository.NotificationRepository;
 import com.securebank.notification.security.JwtTokenProvider;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,9 @@ class NotificationControllerTest {
 
   @Autowired
   private NotificationRepository notificationRepository;
+
+  @Autowired
+  private NotificationEventConsumer eventConsumer;
 
   @Autowired
   private JwtTokenProvider tokenProvider;
@@ -170,5 +176,63 @@ class NotificationControllerTest {
       )
       .andExpect(status().isCreated())
       .andExpect(jsonPath("$.title", is("Direct Alert")));
+  }
+
+  @Test
+  void sendNotification_NonAdmin_Returns403Forbidden() throws Exception {
+    SendNotificationRequest request = SendNotificationRequest.builder()
+      .userId(userId)
+      .type(NotificationType.SECURITY_ALERT)
+      .channel(NotificationChannel.SMS)
+      .title("Unauthorized Alert")
+      .message("Message")
+      .build();
+
+    mockMvc
+      .perform(
+        post("/api/v1/notifications/send")
+          .header("Authorization", "Bearer " + userToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(objectMapper.writeValueAsString(request))
+      )
+      .andExpect(status().isForbidden())
+      .andExpect(jsonPath("$.error", is("Forbidden")));
+  }
+
+  @Test
+  void kafkaConsumer_AuthEvents_CreatesNotification() {
+    String json = String.format("{\"eventType\":\"FAILED_LOGIN\",\"userId\":\"%s\"}", userId);
+    eventConsumer.handleAuthEvents(json);
+
+    List<Notification> list = notificationRepository.findAll();
+    assertEquals(1, list.size());
+    assertEquals(NotificationType.SECURITY_ALERT, list.get(0).getType());
+  }
+
+  @Test
+  void kafkaConsumer_UserEvents_CreatesNotification() {
+    String json = String.format("{\"eventType\":\"DEVICE_LINKED\",\"userId\":\"%s\"}", userId);
+    eventConsumer.handleUserEvents(json);
+
+    List<Notification> list = notificationRepository.findAll();
+    assertEquals(1, list.size());
+    assertEquals(NotificationType.SECURITY_ALERT, list.get(0).getType());
+  }
+
+  @Test
+  void kafkaConsumer_PaymentCompletedAndHeld_HandledSeparately() {
+    String completedJson = String.format("{\"payerUserId\":\"%s\",\"amount\":\"1500.00\"}", userId);
+    eventConsumer.handlePaymentCompleted(completedJson);
+
+    String heldJson = String.format(
+      "{\"payerUserId\":\"%s\",\"amount\":\"1500.00\",\"reason\":\"High risk\"}",
+      userId
+    );
+    eventConsumer.handlePaymentHeld(heldJson);
+
+    List<Notification> list = notificationRepository.findAll();
+    assertEquals(2, list.size());
+    assertEquals(NotificationType.TRANSACTION_ALERT, list.get(0).getType());
+    assertEquals(NotificationType.SECURITY_ALERT, list.get(1).getType());
   }
 }
