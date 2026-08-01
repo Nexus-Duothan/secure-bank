@@ -7,9 +7,12 @@ CREATE TABLE IF NOT EXISTS payees (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- A caller can only save a given account as a payee once (FR-16).
+-- A caller can only save a given account as a payee once (FR-16). Kept as a plain
+-- index so the script runs on H2 as well as PostgreSQL: H2 has no function-based
+-- indexes. Case-insensitive matching is enforced in PayeeService, which checks
+-- existsByOwnerUserIdAndAccountReferenceIgnoreCase before inserting.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payees_owner_account
-  ON payees(owner_user_id, lower(account_reference));
+  ON payees(owner_user_id, account_reference);
 
 CREATE INDEX IF NOT EXISTS idx_payees_owner_user_id ON payees(owner_user_id);
 

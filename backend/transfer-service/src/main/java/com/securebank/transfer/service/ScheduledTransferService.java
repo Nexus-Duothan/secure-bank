@@ -26,10 +26,21 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ScheduledTransferService {
 
+  /** Statuses a customer is allowed to move a schedule to. */
   private static final Set<ScheduleStatus> USER_SETTABLE_STATUSES = Set.of(
     ScheduleStatus.ACTIVE,
     ScheduleStatus.PAUSED,
     ScheduleStatus.CANCELLED
+  );
+
+  /**
+   * Statuses a schedule can still be moved out of. Cancelling is final: a cancelled
+   * schedule must never be reactivated, or a payment the customer stopped could
+   * silently start running again.
+   */
+  private static final Set<ScheduleStatus> CHANGEABLE_STATUSES = Set.of(
+    ScheduleStatus.ACTIVE,
+    ScheduleStatus.PAUSED
   );
 
   private final ScheduledTransferRepository scheduledTransferRepository;
@@ -94,7 +105,7 @@ public class ScheduledTransferService {
       .findByIdAndOwnerUserId(scheduleId, caller.userId())
       .orElseThrow(() -> new EntityNotFoundException("Scheduled transfer not found"));
 
-    if (!USER_SETTABLE_STATUSES.contains(schedule.getStatus())) {
+    if (!CHANGEABLE_STATUSES.contains(schedule.getStatus())) {
       throw new ConflictException(
         "Schedule is " + schedule.getStatus() + " and can no longer be changed"
       );
