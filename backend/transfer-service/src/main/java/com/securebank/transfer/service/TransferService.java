@@ -51,10 +51,14 @@ public class TransferService {
 
   @Transactional
   public TransferResponse quote(CallerIdentity caller, TransferQuoteRequest request, String idempotencyKey) {
-    if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+    // Blank normalizes to null so it's never persisted: the unique index only excludes NULL,
+    // not empty string, and a stored "" would collide across unrelated blank-header requests.
+    String normalizedIdempotencyKey =
+      (idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey.trim();
+    if (normalizedIdempotencyKey != null) {
       var existing = transferRepository.findByInitiatedByUserIdAndIdempotencyKey(
         caller.userId(),
-        idempotencyKey
+        normalizedIdempotencyKey
       );
       if (existing.isPresent()) {
         return TransferResponse.from(existing.get());
@@ -88,7 +92,7 @@ public class TransferService {
         .currency(account.currency() == null ? DEFAULT_CURRENCY : account.currency())
         .note(request.note())
         .status(TransferStatus.PENDING_CONFIRMATION)
-        .idempotencyKey(idempotencyKey)
+        .idempotencyKey(normalizedIdempotencyKey)
         .build()
     );
     return TransferResponse.from(transfer);

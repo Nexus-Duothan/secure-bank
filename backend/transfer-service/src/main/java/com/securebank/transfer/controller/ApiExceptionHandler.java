@@ -81,13 +81,17 @@ public class ApiExceptionHandler {
     return error(HttpStatus.SERVICE_UNAVAILABLE, "Unable to verify account balance, please try again");
   }
 
-  /** Backstop for a unique-constraint race that slips past the explicit idempotency lookup. */
+  /**
+   * Backstop for a unique-constraint race that slips past an explicit check-then-insert (the
+   * transfer idempotency key, the payee dedupe check, etc.) - deliberately generic since this
+   * handler applies service-wide, not just to transfers.
+   */
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<Map<String, Object>> handleDataIntegrity(
     DataIntegrityViolationException exception
   ) {
-    log.warn("Constraint violation while persisting a transfer", exception);
-    return error(HttpStatus.CONFLICT, "That transfer conflicts with an existing request");
+    log.warn("Constraint violation while persisting a request", exception);
+    return error(HttpStatus.CONFLICT, "That change conflicts with an existing record");
   }
 
   @ExceptionHandler({

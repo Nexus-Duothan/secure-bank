@@ -23,7 +23,7 @@ const fieldLabel = (text: string, color: string) => (
 );
 
 const formatCurrency = (currency: string, value: number) =>
-  `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(value)}`;
+  `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 
 const TransferMoney: React.FC = () => {
   const { token } = theme.useToken();
