@@ -1,15 +1,16 @@
 server:
-  port: 8086
+  port: ${SERVER_PORT:8086}
 
 spring:
   application:
     name: payments-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/securebank
-    username: securebank
-    password: securebank_secret_pass
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/securebank}
+    username: ${SPRING_DATASOURCE_USERNAME:securebank}
+    password: ${SPRING_DATASOURCE_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:none}
+    open-in-view: false
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

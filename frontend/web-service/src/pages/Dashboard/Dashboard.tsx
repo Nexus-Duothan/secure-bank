@@ -1,81 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Flex, Typography, theme } from 'antd';
+import { Avatar, Button, Flex, Typography, theme } from 'antd';
 import {
+  BellOutlined,
   SwapOutlined,
   DollarOutlined,
   PercentageOutlined,
   CaretUpOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import accountsService, { type Account, type Transaction } from '../../api/accountsService';
+import userService, { type UserProfile } from '../../api/userService';
 import TransactionRow from '../../components/TransactionRow';
 import BottomNav from '../../components/BottomNav';
+import {
+  DEMO_PROFILE,
+  DEMO_PRIMARY_ACCOUNT,
+  DEMO_RECENT_TRANSACTIONS,
+} from '../../mocks/demoCustomer';
+import { getProfilePhoto } from '../../utils/profilePhoto';
 
 const { Text, Title, Link } = Typography;
 
 const TEAL_TINT = '#DCEFEA';
 const NAVY = '#0B1B2B';
 
-const CURRENT_USER = { firstName: 'John', lastName: 'Doe' };
-
-const MOCK_ACCOUNT: Account = {
-  id: 'acc-001',
-  nickname: 'Current Account',
-  accountType: 'CURRENT',
-  lastFourDigits: '4821',
-  balance: 48231.76,
-  currency: 'USD',
-  monthlyChangePercent: 2.4,
-  verifiedLabel: '2m ago',
-};
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'txn-1',
-    merchant: 'Ceylon Electricity Board',
-    category: 'Utilities',
-    date: 'Today',
-    amount: -84.2,
-    verified: true,
-  },
-  {
-    id: 'txn-2',
-    merchant: 'Salary Deposit',
-    category: 'Income',
-    date: 'Yesterday',
-    amount: 3200,
-    verified: true,
-  },
-  {
-    id: 'txn-3',
-    merchant: "Kumar's Grocers",
-    category: 'Groceries',
-    date: 'Jul 20',
-    amount: -46.75,
-    verified: true,
-  },
-  {
-    id: 'txn-4',
-    merchant: 'Transfer to A. Silva',
-    category: 'Transfer',
-    date: 'Jul 19',
-    amount: -150,
-    verified: true,
-  },
-];
+const MOCK_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
+const MOCK_TRANSACTIONS: Transaction[] = DEMO_RECENT_TRANSACTIONS;
+const MOCK_PROFILE: UserProfile = DEMO_PROFILE;
 
 const QUICK_ACTIONS = [
   { key: 'transfer', label: 'Transfer', icon: <SwapOutlined />, path: '/transfer' },
   { key: 'pay', label: 'Pay bill', icon: <DollarOutlined />, path: '/pay' },
   { key: 'loans', label: 'Loans', icon: <PercentageOutlined />, path: '/loans/apply' },
 ];
-
-const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-};
 
 const getInitials = (name: string) =>
   name
@@ -96,11 +54,28 @@ const formatCurrency = (value: number, currency: string) =>
 const Dashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
   const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
 
   useEffect(() => {
     let cancelled = false;
+
+    userService
+      .getProfile()
+      .then((data) => {
+        if (!cancelled) {
+          setProfile(data);
+          setProfilePhoto(getProfilePhoto(data.id));
+        }
+      })
+      .catch(() => {
+        // Endpoint not available yet - fall back to the placeholder shown above.
+        if (!cancelled) {
+          setProfilePhoto(getProfilePhoto(MOCK_PROFILE.id));
+        }
+      });
 
     accountsService
       .getPrimaryAccount()
@@ -125,14 +100,22 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const fullName = `${CURRENT_USER.firstName} ${CURRENT_USER.lastName}`;
+  const fullName = profile.fullName;
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
         <Flex justify="space-between" align="center" style={{ marginBottom: 28 }}>
           <div>
-            <Text style={{ color: token.colorTextTertiary, fontSize: 15 }}>{getGreeting()}</Text>
+            <Text
+              style={{
+                color: token.colorPrimary,
+                fontSize: 16,
+                fontWeight: 500,
+              }}
+            >
+              {'\u{1F44B} Hi'}
+            </Text>
             <Title
               level={3}
               className="font-display"
@@ -141,9 +124,30 @@ const Dashboard: React.FC = () => {
               {fullName}
             </Title>
           </div>
-          <Avatar size={48} style={{ background: NAVY, fontWeight: 600 }}>
-            {getInitials(fullName)}
-          </Avatar>
+          <Flex align="center" gap={12}>
+            <Avatar
+              size={52}
+              src={profilePhoto ?? undefined}
+              style={{ background: NAVY, fontWeight: 600, cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
+              {!profilePhoto ? getInitials(fullName) : null}
+            </Avatar>
+            <Button
+              shape="circle"
+              size="large"
+              icon={<BellOutlined />}
+              onClick={() => navigate('/notifications')}
+              style={{ width: 44, height: 44 }}
+            />
+            <Button
+              shape="circle"
+              size="large"
+              icon={<SettingOutlined />}
+              onClick={() => navigate('/profile')}
+              style={{ width: 44, height: 44 }}
+            />
+          </Flex>
         </Flex>
 
         <div
@@ -155,9 +159,21 @@ const Dashboard: React.FC = () => {
           }}
         >
           <Flex justify="space-between" align="center">
-            <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14 }}>
-              Total balance · {account.nickname}
-            </Text>
+            <div>
+              <Text
+                style={{
+                  display: 'block',
+                  color: '#FFFFFF',
+                  fontSize: 16,
+                  fontWeight: 600,
+                }}
+              >
+                SecureBank
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
+                {account.nickname}
+              </Text>
+            </div>
             <Flex
               align="center"
               gap={6}

@@ -42,6 +42,9 @@ public class UserCredential {
   @Column(name = "full_name", nullable = false, length = 100)
   private String fullName;
 
+  @Column(name = "phone_number", length = 30)
+  private String phoneNumber;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 20)
   private Role role;

@@ -55,7 +55,9 @@ const BottomNav: React.FC<BottomNavProps> = ({ accountsPath }) => {
         const isActive =
           item.key === 'home'
             ? location.pathname === '/dashboard'
-            : location.pathname.startsWith(item.path);
+            : item.key === 'profile'
+              ? location.pathname.startsWith('/profile')
+              : location.pathname.startsWith(item.path);
         const color = isActive ? token.colorPrimary : token.colorTextTertiary;
 
         return (

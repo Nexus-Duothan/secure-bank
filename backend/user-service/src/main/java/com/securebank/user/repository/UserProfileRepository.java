@@ -1,0 +1,13 @@
+package com.securebank.user.repository;
+
+import com.securebank.user.entity.UserProfile;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> {
+  Optional<UserProfile> findFirstByOrderByCreatedAtAsc();
+  Optional<UserProfile> findByEmailIgnoreCase(String email);
+
+  boolean existsByEmailIgnoreCaseAndIdNot(String email, UUID id);
+}

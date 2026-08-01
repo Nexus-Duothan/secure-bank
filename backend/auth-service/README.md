@@ -44,6 +44,12 @@ All endpoints are exposed under `/api/v1/auth`:
 - `jwt.access-token-expiration-seconds`: `300` (5 minutes)
 - `jwt.refresh-token-expiration-seconds`: `604800` (7 days)
 
+## 🗂️ Flyway Note
+
+`V3__ensure_auth_schema_after_baseline.sql` is intentionally kept as an idempotent compatibility migration for local databases that were baselined before the auth schema was fully managed by Flyway. Do not rewrite applied migrations in place. Add a new `V4__...sql` migration for the next schema change instead.
+
+A repo note with verification queries and the local repair approach lives at [`docs/flyway-auth-baseline-repair.md`](../../docs/flyway-auth-baseline-repair.md).
+
 ---
 
 ## 🧪 Running Automated Tests
@@ -75,3 +81,10 @@ mvn spring-boot:run
 ```
 
 The service will start on port `8081`.
+
+Local development accounts are expected to exist in the database already:
+
+- Customer: `kaveesha.demo` / `SecureBank@123`
+- Merchant: `sahan.merchant` / `SecureBank@123`
+- Bank officer: `anjali.officer` / `SecureBankAdmin@123`
+- Admin: `nimali.admin` / `SecureBankAdmin@123`

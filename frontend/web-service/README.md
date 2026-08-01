@@ -1,46 +1,74 @@
 # Frontend Web Service (`web-service`)
 
-The **Web Service** is the user-facing digital banking client built with React 18, Vite, TypeScript, and Ant Design (`antd`). It translates the wireframes defined in `proposal.md` into an accessible, responsive web application.
+The **Web Service** is the user-facing digital banking client built with React 18, Vite, TypeScript, and Ant Design (`antd`).
 
 ---
 
-## 🎯 What to Develop
+## What It Covers
 
-- **Authentication Screens**: Login, OTP Verification, and Password Reset (`Section 4.1`).
-- **Dashboard & Account Details**: Balances, status badges, and transaction history filtering (`Section 4.1`).
-- **Transfers & Payments**: Money Transfer (A2A) with confirmation summary, Pay Vendor (A2V) with QR code payment support (`Section 4.1`).
-- **Lending Module**: Loan Application submission flow and Repayment Schedule tracker (`Section 4.1`).
-- **Security & Audit View**: Real-time transaction audit history, active session revocation, and security alerts.
-- **Accessibility & Responsiveness**: Conformance to WCAG 2.1 Level AA and mobile/tablet/desktop layouts (`NFR-U2`, `NFR-U3`).
+- Authentication screens: login, OTP verification, and password reset
+- Dashboard and account details
+- Transfers, payments, and lending flows
+- Security views such as notifications, profile controls, and linked devices
+- Responsive layouts for desktop and mobile
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 - Node.js 24+
 - npm 11+
 
 ---
 
-## 🚀 How to Setup & Run
+## Run Locally
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Launch Development Server
+### 2. Start the dev server
 
 ```bash
 npm run dev
 ```
 
-The dev server starts at `http://localhost:3000` with API calls proxied to `http://localhost:8080` (API Gateway).
+The dev server starts at `http://localhost:5173`.
 
-### 3. Build & Typecheck
+### 3. Build and lint
 
 ```bash
 npm run build
 npm run lint
 ```
+
+---
+
+## Talking To The Backend
+
+The client normally calls relative `/api/...` paths so traffic goes through the API Gateway.
+
+Copy `.env.example` to `.env.local` when you want to change that behavior:
+
+| Variable                | Default                 | Purpose                                            |
+| :---------------------- | :---------------------- | :------------------------------------------------- |
+| `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Where the Vite dev server forwards `/api` requests |
+| `VITE_USER_API_BASE`    | `/api/v1/users`         | Optional absolute override for user-service calls  |
+
+Examples:
+
+```bash
+VITE_API_PROXY_TARGET=http://localhost:8080 npm run dev
+```
+
+```bash
+VITE_USER_API_BASE=http://localhost:8083/api/v1/users npm run dev
+```
+
+If the backend is unreachable, the app falls back to a local preview of the demo profile and shows a banner. Changes made in that mode are not saved.
+
+If `SECUREBANK_USER_OTP_EXPOSE_CODE=true` is enabled on `user-service`, the generated OTP is returned in the challenge response and shown on the OTP screen for local browser-only demos. With the safer default, the code must arrive through the notification flow instead.
+
+The **Admin / RBAC** screen stands in for a signed-in staff session: it loads the directory as the seeded administrator so the backend authorisation rules are exercised for real.

@@ -1,0 +1,11 @@
+package com.securebank.user.enums;
+
+public enum ChangeRequestType {
+  UPDATE_PROFILE,
+  UPDATE_NOTIFICATION_PREFERENCES,
+  LINK_DEVICE,
+  TRUST_DEVICE,
+  REVOKE_DEVICE,
+  FREEZE_ACCOUNT,
+  UNFREEZE_ACCOUNT,
+}

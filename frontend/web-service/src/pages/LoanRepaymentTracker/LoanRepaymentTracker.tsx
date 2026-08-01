@@ -2,23 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Flex, Progress, Switch, Typography, theme } from 'antd';
 import lendingService, { type LoanDetail } from '../../api/lendingService';
+import { buildDemoLoanDetail } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
 const NAVY = '#0B1B2B';
 
-const buildMockLoan = (id: string): LoanDetail => ({
-  id,
-  name: 'Home Improvement Loan',
-  currency: 'LKR',
-  remainingBalance: 318420.0,
-  installmentsPaid: 9,
-  installmentsTotal: 24,
-  nextPaymentDueDate: '05 Aug 2026',
-  nextPaymentAmount: 24350.0,
-  autoPayEnabled: true,
-  autoPayAccountName: 'Salary Savings',
-});
+const buildMockLoan = (id: string): LoanDetail => buildDemoLoanDetail(id);
 
 const formatAmount = (currency: string, value: number) =>
   `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(value)}`;
@@ -26,7 +16,7 @@ const formatAmount = (currency: string, value: number) =>
 const LoanRepaymentTracker: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { token } = theme.useToken();
-  const loanId = id ?? 'loan-001';
+  const loanId = id ?? 'loan-demo-001';
   const [loan, setLoan] = useState<LoanDetail>(() => buildMockLoan(loanId));
   const [autoPay, setAutoPay] = useState(loan.autoPayEnabled);
 
@@ -45,7 +35,7 @@ const LoanRepaymentTracker: React.FC = () => {
         }
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
 
     return () => {

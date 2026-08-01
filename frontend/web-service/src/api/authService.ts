@@ -1,4 +1,5 @@
 import { createApiClient } from './createApiClient';
+import tokenStorage from './tokenStorage';
 
 const client = createApiClient('/api/v1/auth');
 
@@ -61,6 +62,17 @@ export interface ResetPasswordResponse {
   message: string;
 }
 
+export interface SessionInfo {
+  sessionId: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  deviceInfo: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+  current: boolean;
+}
+
 export const authService = {
   client,
   login: (payload: LoginPayload) =>
@@ -77,7 +89,26 @@ export const authService = {
     client
       .post<ResetPasswordResponse>('/password-reset/confirm', { token, newPassword, totpCode })
       .then((response) => response.data),
-  logout: () => client.post('/logout').then((response) => response.data),
+  getSessions: () => {
+    const refreshToken = tokenStorage.getRefreshToken();
+    return client
+      .get<SessionInfo[]>('/sessions', {
+        headers: refreshToken ? { 'X-Refresh-Token': refreshToken } : undefined,
+      })
+      .then((response) => response.data);
+  },
+  revokeSession: (sessionId: string) => client.delete(`/sessions/${sessionId}`),
+  logout: async () => {
+    const refreshToken = tokenStorage.getRefreshToken();
+    if (!refreshToken) return;
+    const sessions = await client.get<SessionInfo[]>('/sessions', {
+      headers: { 'X-Refresh-Token': refreshToken },
+    });
+    const currentSession = sessions.data.find((session) => session.current);
+    if (currentSession) {
+      await client.delete(`/sessions/${currentSession.sessionId}`);
+    }
+  },
 };
 
 export default authService;
