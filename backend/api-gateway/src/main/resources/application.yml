@@ -8,41 +8,51 @@ spring:
     gateway:
       routes:
         - id: auth-service
-          uri: http://localhost:8081
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/auth/**
+        - id: totp-service
+          uri: ${TOTP_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/totp/**
         - id: user-service
-          uri: http://localhost:8083
+          uri: ${USER_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/api/v1/users/**
         - id: accounts-service
-          uri: http://localhost:8084
+          uri: ${ACCOUNTS_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/api/v1/accounts/**
         - id: transfer-service
-          uri: http://localhost:8085
+          uri: ${TRANSFER_SERVICE_URL:http://localhost:8085}
           predicates:
             - Path=/api/v1/transfers/**
         - id: payments-service
-          uri: http://localhost:8086
+          uri: ${PAYMENTS_SERVICE_URL:http://localhost:8086}
           predicates:
             - Path=/api/v1/payments/**
         - id: lending-service
-          uri: http://localhost:8087
+          uri: ${LENDING_SERVICE_URL:http://localhost:8087}
           predicates:
             - Path=/api/v1/loans/**
         - id: notification-service
-          uri: http://localhost:8088
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8088}
           predicates:
             - Path=/api/v1/notifications/**
         - id: audit-service
-          uri: http://localhost:8089
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8089}
           predicates:
             - Path=/api/v1/audit/**
-        - id: totp-service
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/v1/totp/**
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
+
+gateway:
+  public-paths:
+    - /api/v1/auth/login
+    - /api/v1/auth/register
+    - /api/v1/auth/refresh
+    - /api/v1/auth/forgot-password
+    - /api/v1/auth/reset-password
+    - /actuator/health
+    - /actuator/info
