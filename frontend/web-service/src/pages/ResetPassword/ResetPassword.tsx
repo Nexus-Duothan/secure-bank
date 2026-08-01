@@ -18,6 +18,7 @@ const SUCCESS_REDIRECT_DELAY_MS = 2000;
 interface ResetPasswordFormValues {
   newPassword: string;
   confirmPassword: string;
+  totpCode: string;
 }
 
 type ScreenStatus = 'form' | 'invalid' | 'success';
@@ -43,7 +44,7 @@ const ResetPassword: React.FC = () => {
     setSubmitting(true);
     setError(null);
     try {
-      await authService.resetPassword(resetToken, values.newPassword);
+      await authService.resetPassword(resetToken, values.newPassword, values.totpCode);
       setStatus('success');
     } catch {
       setStatus('invalid');
@@ -103,6 +104,23 @@ const ResetPassword: React.FC = () => {
                 ]}
               >
                 <Input.Password size="large" autoComplete="new-password" />
+              </Form.Item>
+
+              <Form.Item
+                label={<span style={{ fontWeight: 600 }}>Authenticator Code</span>}
+                name="totpCode"
+                style={{ marginBottom: 0 }}
+                rules={[
+                  { required: true, message: 'Please enter your 6-digit authenticator code' },
+                  { pattern: /^\d{6}$/, message: 'Code must be 6 digits' },
+                ]}
+              >
+                <Input
+                  size="large"
+                  maxLength={6}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                />
               </Form.Item>
 
               <Form.Item style={{ marginBottom: 0, marginTop: 8 }}>

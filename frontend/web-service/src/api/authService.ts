@@ -73,11 +73,9 @@ export const authService = {
     client
       .post<RequestPasswordResetResponse>('/password-reset/request', { email })
       .then((response) => response.data),
-  // Backend's confirm endpoint also requires a totpCode (MFA-protected reset) that
-  // this screen doesn't collect yet, so a real backend will reject this until that's wired up.
-  resetPassword: (token: string, newPassword: string) =>
+  resetPassword: (token: string, newPassword: string, totpCode: string) =>
     client
-      .post<ResetPasswordResponse>('/password-reset/confirm', { token, newPassword })
+      .post<ResetPasswordResponse>('/password-reset/confirm', { token, newPassword, totpCode })
       .then((response) => response.data),
   logout: () => client.post('/logout').then((response) => response.data),
 };
