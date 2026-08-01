@@ -122,6 +122,13 @@ public class LoanApplicationService {
         "Application is " + application.getStatus() + " and can no longer be reviewed"
       );
     }
+    // Segregation of duties: an officer must not be able to approve/reject their own
+    // application (e.g. by applying for a personal loan under their own customer account).
+    if (application.getApplicantUserId().equals(officerId)) {
+      throw new InvalidApplicationStateException(
+        "Officers cannot review their own loan applications"
+      );
+    }
 
     application.setReviewedBy(officerId);
     application.setReviewedAt(Instant.now());

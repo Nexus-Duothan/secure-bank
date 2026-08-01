@@ -262,6 +262,35 @@ class LoanControllerTest {
   }
 
   @Test
+  void reviewApplication_bySameUserAsApplicant_isRejected() throws Exception {
+    String applicationId = submitApplication();
+    String selfReviewToken = tokenProvider.generateAccessToken(
+      customerId,
+      "officer-self",
+      Role.BANK_OFFICER,
+      UserStatus.ACTIVE
+    );
+
+    mockMvc
+      .perform(
+        post("/api/v1/loans/officer/" + applicationId + "/review")
+          .header("Authorization", "Bearer " + selfReviewToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null)))
+      )
+      .andExpect(status().isConflict());
+
+    mockMvc
+      .perform(
+        get("/api/v1/loans/applications/" + applicationId).header(
+          "Authorization",
+          "Bearer " + customerToken
+        )
+      )
+      .andExpect(jsonPath("$.status").value("UNDER_REVIEW"));
+  }
+
+  @Test
   void getApplication_notOwner_returnsNotFound() throws Exception {
     String applicationId = submitApplication();
     String otherToken = tokenProvider.generateAccessToken(
