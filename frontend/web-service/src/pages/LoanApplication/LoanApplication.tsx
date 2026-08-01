@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -11,6 +12,7 @@ import {
   Typography,
   theme,
 } from 'antd';
+import { CheckCircleFilled } from '@ant-design/icons';
 import type { AxiosError } from 'axios';
 import lendingService from '../../api/lendingService';
 
@@ -20,8 +22,7 @@ const TEAL_TINT = '#DCEFEA';
 
 const WIZARD_STEPS = [
   { key: 'amount', title: 'Amount' },
-  { key: 'details', title: 'Details' },
-  { key: 'review', title: 'Review' },
+  { key: 'submitted', title: 'Submitted' },
 ];
 
 const PURPOSE_OPTIONS = [
@@ -49,6 +50,7 @@ const fieldLabel = (text: string, color: string) => (
 
 const LoanApplication: React.FC = () => {
   const { token } = theme.useToken();
+  const navigate = useNavigate();
   const [form] = Form.useForm<LoanAmountFormValues>();
   const [currentStep, setCurrentStep] = useState(0);
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -208,39 +210,40 @@ const LoanApplication: React.FC = () => {
         )}
 
         {currentStep === 1 && (
-          <Card styles={{ body: { padding: 24 } }}>
-            <Title level={4} className="font-display" style={{ margin: 0, color: token.colorText }}>
-              Details
-            </Title>
-            <Text style={{ display: 'block', marginTop: 8, color: token.colorTextSecondary }}>
-              Application {applicationId} started. The employment and personal details step will go
-              here.
-            </Text>
-            <Button
-              type="text"
-              style={{ marginTop: 16, paddingLeft: 0 }}
-              onClick={() => setCurrentStep(0)}
-            >
-              Back to amount
-            </Button>
-          </Card>
-        )}
-
-        {currentStep === 2 && (
-          <Card styles={{ body: { padding: 24 } }}>
-            <Title level={4} className="font-display" style={{ margin: 0, color: token.colorText }}>
-              Review
-            </Title>
-            <Text style={{ display: 'block', marginTop: 8, color: token.colorTextSecondary }}>
-              The review and confirmation step will go here.
-            </Text>
-            <Button
-              type="text"
-              style={{ marginTop: 16, paddingLeft: 0 }}
-              onClick={() => setCurrentStep(1)}
-            >
-              Back to details
-            </Button>
+          <Card
+            style={{ boxShadow: '0 8px 24px rgba(11, 27, 43, 0.06)' }}
+            styles={{ body: { padding: 24 } }}
+          >
+            <Flex vertical align="center" style={{ textAlign: 'center', padding: '8px 0' }}>
+              <CheckCircleFilled
+                style={{ fontSize: 40, color: token.colorPrimary, marginBottom: 16 }}
+              />
+              <Title
+                level={4}
+                className="font-display"
+                style={{ margin: 0, color: token.colorText }}
+              >
+                Application submitted
+              </Title>
+              <Text
+                style={{
+                  display: 'block',
+                  marginTop: 8,
+                  color: token.colorTextSecondary,
+                }}
+              >
+                Application {applicationId} is under review. We'll notify you once a decision has
+                been made.
+              </Text>
+              <Button
+                type="primary"
+                block
+                style={{ fontWeight: 600, marginTop: 24 }}
+                onClick={() => navigate('/dashboard')}
+              >
+                Back to dashboard
+              </Button>
+            </Flex>
           </Card>
         )}
       </div>
