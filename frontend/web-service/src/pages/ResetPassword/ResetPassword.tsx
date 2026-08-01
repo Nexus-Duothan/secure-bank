@@ -4,12 +4,9 @@ import { Alert, Button, Card, Flex, Form, Input, Typography, theme } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled } from '@ant-design/icons';
 import { authService } from '../../api/authService';
 import AuthLayout from '../../components/AuthLayout';
+import { PasswordStrengthMeter } from '../../components/PasswordStrength';
 import TrustIndicator from '../../components/TrustIndicator';
-import {
-  PASSWORD_COMPLEXITY_MESSAGE,
-  PASSWORD_PATTERN,
-  PasswordStrengthMeter,
-} from '../../components/PasswordStrength';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_PATTERN } from '../../components/passwordRules';
 
 const { Paragraph } = Typography;
 

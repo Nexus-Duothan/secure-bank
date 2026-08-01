@@ -1,0 +1,318 @@
+import type { Notification } from '../api/notificationService';
+import type { Account, AccountDetail, Transaction } from '../api/accountsService';
+import type { AuditTransaction } from '../api/auditService';
+import type { LoanDetail } from '../api/lendingService';
+import type { UserProfile } from '../api/userService';
+
+export const DEMO_CUSTOMER = {
+  id: '8f7113d3-9f5b-4a7b-88fd-0a0b7854b1d1',
+  username: 'kaveesha.demo',
+  fullName: 'Kaveesha Kapitiarachchi',
+  firstName: 'Kaveesha',
+  lastName: 'Kapitiarachchi',
+  email: 'kaveesha.kapitiarachchi@securebank.lk',
+  phoneNumber: '+94 77 510 6101',
+};
+
+export const DEMO_PROFILE: UserProfile = {
+  id: DEMO_CUSTOMER.id,
+  fullName: DEMO_CUSTOMER.fullName,
+  email: DEMO_CUSTOMER.email,
+  phoneNumber: DEMO_CUSTOMER.phoneNumber,
+  addressLine: '42 Lake Drive',
+  city: 'Kandy',
+  country: 'Sri Lanka',
+  language: 'English',
+  role: 'CUSTOMER',
+  status: 'ACTIVE',
+  idVerified: true,
+  frozen: false,
+  freezeReason: null,
+  notificationPreferences: {
+    email: true,
+    sms: true,
+    push: true,
+  },
+  linkedDevices: [
+    {
+      id: 'device-demo-001',
+      deviceName: 'Pixel 9',
+      deviceType: 'SecureBank App',
+      browser: '',
+      location: 'Kandy, LK',
+      trusted: true,
+      lastVerifiedAt: '2026-08-01T14:22:00',
+    },
+    {
+      id: 'device-demo-002',
+      deviceName: 'Chrome on Windows',
+      deviceType: 'Browser',
+      browser: 'Chrome',
+      location: 'Colombo, LK',
+      trusted: true,
+      lastVerifiedAt: '2026-07-31T10:15:00',
+    },
+    {
+      id: 'device-demo-003',
+      deviceName: 'Pixel 9',
+      deviceType: 'SecureBank App',
+      browser: '',
+      location: 'Kandy, LK',
+      trusted: false,
+      lastVerifiedAt: '',
+    },
+  ],
+};
+
+export const DEMO_PRIMARY_ACCOUNT: Account = {
+  id: 'acc-demo-primary',
+  nickname: 'Everyday Current',
+  accountType: 'CURRENT',
+  lastFourDigits: '67',
+  balance: 48231.76,
+  currency: 'LKR',
+  monthlyChangePercent: 2.4,
+  verifiedLabel: '2m ago',
+};
+
+export const DEMO_SECONDARY_ACCOUNT = {
+  id: 'acc-demo-savings',
+  label: 'Savings Account - LKR 128,900.00',
+};
+
+export const DEMO_ACCOUNT_DETAIL: AccountDetail = {
+  id: DEMO_PRIMARY_ACCOUNT.id,
+  nickname: DEMO_PRIMARY_ACCOUNT.nickname,
+  accountTypeLabel: 'Everyday Current',
+  currency: DEMO_PRIMARY_ACCOUNT.currency,
+  balance: DEMO_PRIMARY_ACCOUNT.balance,
+  accountNumber: '1234 5678 90067',
+  ifscCode: 'SBLK0007',
+  openedOn: '14 Mar 2024',
+  homeBranch: 'Kandy City',
+  status: 'Active - Verified',
+};
+
+export const DEMO_RECENT_TRANSACTIONS: Transaction[] = [
+  {
+    id: 'txn-demo-001',
+    merchant: 'Ceylon Electricity Board',
+    category: 'Utilities',
+    date: 'Today',
+    amount: -84.2,
+    verified: true,
+  },
+  {
+    id: 'txn-demo-002',
+    merchant: 'Salary Deposit',
+    category: 'Income',
+    date: 'Yesterday',
+    amount: 3200.0,
+    verified: true,
+  },
+  {
+    id: 'txn-demo-003',
+    merchant: "Kumar's Grocers",
+    category: 'Groceries',
+    date: 'Jul 20',
+    amount: -46.75,
+    verified: true,
+  },
+  {
+    id: 'txn-demo-004',
+    merchant: 'Transfer to A. Silva',
+    category: 'Transfer',
+    date: 'Jul 19',
+    amount: -150.0,
+    verified: true,
+  },
+];
+
+export const DEMO_AUDIT_TRANSACTIONS: AuditTransaction[] = [
+  {
+    id: 'txn-demo-001',
+    merchant: 'Ceylon Electricity Board',
+    category: 'Bill payment',
+    location: 'Kandy',
+    amount: -84.2,
+    currency: 'LKR',
+    timestamp: '2026-08-01T09:12:00',
+    dateGroupLabel: 'Today - 01 Aug 2026',
+    journalId: 'J-94021',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-002',
+    merchant: 'Salary Deposit',
+    category: 'Income',
+    location: 'SecureBank Payroll',
+    amount: 3200.0,
+    currency: 'LKR',
+    timestamp: '2026-07-31T08:45:00',
+    dateGroupLabel: 'Yesterday - 31 Jul 2026',
+    journalId: 'J-94020',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-003',
+    merchant: "Kumar's Grocers",
+    category: 'Card payment',
+    location: 'Kandy',
+    amount: -46.75,
+    currency: 'LKR',
+    timestamp: '2026-07-20T18:20:00',
+    dateGroupLabel: '20 Jul 2026',
+    journalId: 'J-93981',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-004',
+    merchant: 'Transfer to A. Silva',
+    category: 'Outgoing transfer',
+    location: 'SecureBank Transfer',
+    amount: -150.0,
+    currency: 'LKR',
+    timestamp: '2026-07-19T14:10:00',
+    dateGroupLabel: '19 Jul 2026',
+    journalId: 'J-93972',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-005',
+    merchant: 'Highway Fuel Stop',
+    category: 'Transport',
+    location: 'Kadawatha',
+    amount: -18.4,
+    currency: 'LKR',
+    timestamp: '2026-07-18T11:40:00',
+    dateGroupLabel: '18 Jul 2026',
+    journalId: 'J-93958',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-006',
+    merchant: 'Mobile Reload',
+    category: 'Bills',
+    location: 'Dialog',
+    amount: -12.0,
+    currency: 'LKR',
+    timestamp: '2026-07-17T20:05:00',
+    dateGroupLabel: '17 Jul 2026',
+    journalId: 'J-93940',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-007',
+    merchant: 'Rent Collection',
+    category: 'Income',
+    location: 'Standing order',
+    amount: 950.0,
+    currency: 'LKR',
+    timestamp: '2026-07-15T07:15:00',
+    dateGroupLabel: '15 Jul 2026',
+    journalId: 'J-93901',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-008',
+    merchant: 'Pharmacy Care',
+    category: 'Health',
+    location: 'Kandy',
+    amount: -36.9,
+    currency: 'LKR',
+    timestamp: '2026-07-14T17:45:00',
+    dateGroupLabel: '14 Jul 2026',
+    journalId: 'J-93890',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-009',
+    merchant: 'Dialog Broadband',
+    category: 'Internet',
+    location: 'Online',
+    amount: -42.5,
+    currency: 'LKR',
+    timestamp: '2026-07-13T10:22:00',
+    dateGroupLabel: '13 Jul 2026',
+    journalId: 'J-93878',
+    flagged: false,
+  },
+  {
+    id: 'txn-demo-010',
+    merchant: 'Bookshop',
+    category: 'Education',
+    location: 'Peradeniya',
+    amount: -22.1,
+    currency: 'LKR',
+    timestamp: '2026-07-12T13:35:00',
+    dateGroupLabel: '12 Jul 2026',
+    journalId: 'J-93860',
+    flagged: false,
+  },
+];
+
+export const DEMO_NOTIFICATIONS: Notification[] = [
+  {
+    id: 'ntf-demo-001',
+    type: 'security',
+    title: 'New sign-in verified',
+    description:
+      'Chrome on Windows from Colombo, LK was approved using your primary mobile device.',
+    categoryLabel: 'Security alert',
+    timestamp: '14:22',
+    groupLabel: 'Today',
+    read: false,
+  },
+  {
+    id: 'ntf-demo-002',
+    type: 'security',
+    title: 'Card transaction protected',
+    description:
+      'A card attempt of LKR 92,000.00 from an unfamiliar location was stopped for your safety.',
+    categoryLabel: 'Security alert',
+    timestamp: '09:47',
+    groupLabel: 'Today',
+    read: false,
+  },
+  {
+    id: 'ntf-demo-003',
+    type: 'info',
+    title: 'Loan installment received',
+    description: 'Your July loan installment of LKR 24,350.00 was received successfully.',
+    timestamp: '05 Jul - 08:00',
+    groupLabel: 'Earlier',
+    read: true,
+  },
+  {
+    id: 'ntf-demo-004',
+    type: 'info',
+    title: 'Statement available',
+    description: 'Your June statement for Everyday Current is ready to download.',
+    timestamp: '01 Jul - 06:12',
+    groupLabel: 'Earlier',
+    read: true,
+  },
+];
+
+export const DEMO_LOAN_DETAIL: LoanDetail = {
+  id: 'loan-demo-001',
+  name: 'Home Improvement Loan',
+  currency: 'LKR',
+  remainingBalance: 318420.0,
+  installmentsPaid: 9,
+  installmentsTotal: 24,
+  nextPaymentDueDate: '05 Aug 2026',
+  nextPaymentAmount: 24350.0,
+  autoPayEnabled: true,
+  autoPayAccountName: 'Everyday Current',
+};
+
+export const buildDemoAccountDetail = (id: string): AccountDetail => ({
+  ...DEMO_ACCOUNT_DETAIL,
+  id,
+});
+
+export const buildDemoLoanDetail = (id: string): LoanDetail => ({
+  ...DEMO_LOAN_DETAIL,
+  id,
+});

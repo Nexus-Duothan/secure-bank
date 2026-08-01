@@ -3,23 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Flex, Typography, theme } from 'antd';
 import { LeftOutlined } from '@ant-design/icons';
 import accountsService, { type AccountDetail } from '../../api/accountsService';
+import { buildDemoAccountDetail } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
 const NAVY = '#0B1B2B';
 
-const buildMockAccount = (id: string): AccountDetail => ({
-  id,
-  nickname: 'Current Account',
-  accountTypeLabel: 'Personal Savings',
-  currency: 'LKR',
-  balance: 428650.0,
-  accountNumber: '7742 1190 003',
-  ifscCode: 'SBLK0001',
-  openedOn: '14 Mar 2061',
-  homeBranch: 'Colombo Fort',
-  status: 'Active · Restored',
-});
+const buildMockAccount = (id: string): AccountDetail => buildDemoAccountDetail(id);
 
 const formatBalance = (currency: string, value: number) =>
   `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(value)}`;
@@ -55,7 +45,7 @@ const AccountDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const accountId = id ?? 'acc-001';
+  const accountId = id ?? 'acc-demo-primary';
   const [account, setAccount] = useState<AccountDetail>(() => buildMockAccount(accountId));
 
   useEffect(() => {
@@ -68,7 +58,7 @@ const AccountDetails: React.FC = () => {
         if (!cancelled) setAccount(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
 
     return () => {
@@ -76,7 +66,7 @@ const AccountDetails: React.FC = () => {
     };
   }, [accountId]);
 
-  const isActive = account.status === 'Active · Restored';
+  const isActive = account.status === 'Active - Verified';
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -118,7 +108,7 @@ const AccountDetails: React.FC = () => {
             {formatBalance(account.currency, account.balance)}
           </Text>
           <Text className="font-mono" style={{ fontSize: 14, color: token.colorTextTertiary }}>
-            Account · {account.accountNumber} · IFSC {account.ifscCode}
+            Account - {account.accountNumber} - IFSC {account.ifscCode}
           </Text>
         </div>
 

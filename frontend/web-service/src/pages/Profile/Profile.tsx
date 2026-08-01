@@ -1,41 +1,84 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Avatar, Flex, Typography, theme } from 'antd';
-import { LogoutOutlined, RightOutlined } from '@ant-design/icons';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Avatar,
+  Button,
+  Flex,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Spin,
+  Switch,
+  Typography,
+  message,
+  theme,
+} from 'antd';
+import {
+  CameraOutlined,
+  EditOutlined,
+  LeftOutlined,
+  LogoutOutlined,
+  RightOutlined,
+} from '@ant-design/icons';
 import authService from '../../api/authService';
-import userService, { type UserProfile } from '../../api/userService';
+import { getApiErrorMessage } from '../../api/apiError';
+import userService, {
+  type NotificationPreferences,
+  type OtpChallenge,
+  type ProfileUpdatePayload,
+  type UserDevice,
+  type UserProfile,
+} from '../../api/userService';
 import accountsService, { type Account } from '../../api/accountsService';
 import tokenStorage from '../../api/tokenStorage';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
+import { DEMO_PRIMARY_ACCOUNT, DEMO_PROFILE } from '../../mocks/demoCustomer';
+import { getProfilePhoto, saveProfilePhoto } from '../../utils/profilePhoto';
 
 const { Text, Title } = Typography;
 
 const NAVY = '#0B1B2B';
 const TEAL_TINT = '#DCEFEA';
+const LANGUAGE_OPTIONS = ['English', 'Sinhala', 'Tamil'];
+const OVERVIEW_PANEL = 'overview';
+const PROFILE_PANELS = ['personal', 'notifications', 'language', 'devices', 'password'] as const;
 
-const MOCK_PROFILE: UserProfile = {
-  id: 'usr-001',
-  fullName: 'John Doe',
-  email: 'john.doe@example.com',
-  role: 'Customer',
-  idVerified: true,
-  twoFactorEnabled: true,
-  lastVerifiedSession: 'Today 14:22',
-  trustedDevicesCount: 2,
-  deviceVerified: true,
-};
+type ProfilePanel = (typeof PROFILE_PANELS)[number] | typeof OVERVIEW_PANEL;
 
-const MOCK_ACCOUNT: Account = {
-  id: 'acc-001',
-  nickname: 'Current Account',
-  accountType: 'CURRENT',
-  lastFourDigits: '4821',
-  balance: 48231.76,
-  currency: 'USD',
-  monthlyChangePercent: 2.4,
-  verifiedLabel: '2m ago',
-};
+interface OtpDialogState {
+  challenge: OtpChallenge;
+  successMessage: string;
+}
+
+interface SettingsRowItem {
+  key: string;
+  label: string;
+  trailing?: string;
+  editable?: boolean;
+  onClick?: () => void;
+}
+
+interface SettingsRowProps extends SettingsRowItem {
+  showDivider: boolean;
+}
+
+interface SecurityStatusRowProps {
+  label: string;
+  value: string;
+}
+
+interface DeviceRowProps {
+  device: UserDevice;
+  busy: boolean;
+  disabled?: boolean;
+  onVerify: (deviceId: string) => void;
+  onRevoke: (deviceId: string) => void;
+}
+
+const MOCK_PROFILE: UserProfile = DEMO_PROFILE;
+const MOCK_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
 
 const getInitials = (name: string) =>
   name
@@ -45,18 +88,62 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-interface SettingsRowItem {
-  key: string;
-  label: string;
-  trailing?: string;
-  onClick?: () => void;
-}
+const formatNotificationSummary = (preferences: NotificationPreferences) => {
+  const enabled = [
+    preferences.email ? 'Email' : null,
+    preferences.sms ? 'SMS' : null,
+    preferences.push ? 'App alerts' : null,
+  ].filter(Boolean);
 
-interface SettingsRowProps extends SettingsRowItem {
-  showDivider: boolean;
-}
+  return enabled.length > 0 ? enabled.join(' / ') : 'None';
+};
 
-const SettingsRow: React.FC<SettingsRowProps> = ({ label, trailing, onClick, showDivider }) => {
+const formatDeviceCount = (count: number) => `${count} linked`;
+
+const formatStatusLabel = (status: UserProfile['status']) =>
+  status
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+const formatLastVerifiedSession = (devices: UserDevice[]) => {
+  const latest = devices
+    .filter((device) => Boolean(device.lastVerifiedAt))
+    .sort((left, right) => right.lastVerifiedAt.localeCompare(left.lastVerifiedAt))[0];
+
+  if (!latest) {
+    return 'No verified sessions';
+  }
+
+  const timestamp = new Date(latest.lastVerifiedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return 'Recently verified';
+  }
+
+  const now = new Date();
+  if (timestamp.toDateString() === now.toDateString()) {
+    return `Today ${timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  return timestamp.toLocaleDateString([], { day: '2-digit', month: 'short' });
+};
+
+const formatDeviceSubtitle = (device: UserDevice) =>
+  [device.deviceType, device.browser, device.location].filter(Boolean).join(' / ');
+
+const getPanelFromSearch = (value: string | null): ProfilePanel =>
+  PROFILE_PANELS.includes(value as (typeof PROFILE_PANELS)[number])
+    ? (value as ProfilePanel)
+    : OVERVIEW_PANEL;
+
+const SettingsRow: React.FC<SettingsRowProps> = ({
+  label,
+  trailing,
+  editable,
+  onClick,
+  showDivider,
+}) => {
   const { token } = theme.useToken();
 
   return (
@@ -75,16 +162,15 @@ const SettingsRow: React.FC<SettingsRowProps> = ({ label, trailing, onClick, sho
         {trailing && (
           <Text style={{ fontSize: 14, color: token.colorTextTertiary }}>{trailing}</Text>
         )}
-        <RightOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} />
+        {editable ? (
+          <EditOutlined style={{ fontSize: 14, color: token.colorPrimary }} />
+        ) : (
+          <RightOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} />
+        )}
       </Flex>
     </Flex>
   );
 };
-
-interface SecurityStatusRowProps {
-  label: string;
-  value: string;
-}
 
 const SecurityStatusRow: React.FC<SecurityStatusRowProps> = ({ label, value }) => (
   <Flex justify="space-between" align="center">
@@ -100,42 +186,412 @@ const SecurityStatusRow: React.FC<SecurityStatusRowProps> = ({ label, value }) =
   </Flex>
 );
 
+const DeviceRow: React.FC<DeviceRowProps> = ({ device, busy, disabled, onVerify, onRevoke }) => {
+  const { token } = theme.useToken();
+
+  return (
+    <Flex
+      justify="space-between"
+      align="center"
+      style={{
+        padding: '16px 18px',
+        borderRadius: 16,
+        border: `1px solid ${token.colorBorder}`,
+        background: token.colorBgContainer,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <Text style={{ display: 'block', fontSize: 15, fontWeight: 600, color: token.colorText }}>
+          {device.deviceName}
+        </Text>
+        <Text
+          style={{
+            display: 'block',
+            marginTop: 4,
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: token.colorTextSecondary,
+          }}
+        >
+          {formatDeviceSubtitle(device)}
+        </Text>
+        <Text
+          style={{
+            display: 'block',
+            marginTop: 4,
+            fontSize: 12,
+            color: device.trusted ? token.colorPrimary : token.colorWarning,
+          }}
+        >
+          {device.trusted
+            ? `Trusted / ${formatLastVerifiedSession([device])}`
+            : 'Waiting for primary-device approval'}
+        </Text>
+      </div>
+
+      <Button
+        type="link"
+        disabled={busy || disabled}
+        style={{
+          color: device.trusted ? token.colorError : token.colorPrimary,
+          fontWeight: 600,
+          paddingInline: 0,
+        }}
+        onClick={() => (device.trusted ? onRevoke(device.id) : onVerify(device.id))}
+      >
+        {device.trusted ? 'Revoke' : 'Verify'}
+      </Button>
+    </Flex>
+  );
+};
+
 const Profile: React.FC = () => {
   const { token } = theme.useToken();
+  const [messageApi, contextHolder] = message.useMessage();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [personalForm] = Form.useForm<ProfileUpdatePayload>();
+  const [notificationForm] = Form.useForm<NotificationPreferences>();
+  const [languageForm] = Form.useForm<{ language: string }>();
+  const [freezeForm] = Form.useForm<{ reason: string }>();
   const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
   const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [otpState, setOtpState] = useState<OtpDialogState | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSubmitting, setOtpSubmitting] = useState(false);
+  const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
+  const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [passwordResetSubmitting, setPasswordResetSubmitting] = useState(false);
+
+  const activePanel = getPanelFromSearch(searchParams.get('panel'));
+  const trustedDeviceCount = useMemo(
+    () => profile.linkedDevices.filter((device) => device.trusted).length,
+    [profile.linkedDevices]
+  );
+  const pendingDevices = useMemo(
+    () => profile.linkedDevices.filter((device) => !device.trusted),
+    [profile.linkedDevices]
+  );
+  const linkedDevices = useMemo(
+    () => profile.linkedDevices.filter((device) => device.trusted),
+    [profile.linkedDevices]
+  );
+  const hasDeviceCapacity = trustedDeviceCount < 3;
+  const sessionExpired = useMemo(() => {
+    const message = profileLoadError?.toLowerCase() ?? '';
+    return (
+      message.includes('access token') ||
+      message.includes('refresh token') ||
+      message.includes('unauthorized') ||
+      message.includes('401')
+    );
+  }, [profileLoadError]);
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyProfileToForms = (nextProfile: UserProfile) => {
+      personalForm.setFieldsValue({
+        fullName: nextProfile.fullName,
+        email: nextProfile.email,
+        phoneNumber: nextProfile.phoneNumber,
+        addressLine: nextProfile.addressLine,
+        city: nextProfile.city,
+        country: nextProfile.country,
+      });
+      notificationForm.setFieldsValue(nextProfile.notificationPreferences);
+      languageForm.setFieldsValue({ language: nextProfile.language });
+    };
+
     userService
       .getProfile()
       .then((data) => {
-        if (!cancelled) setProfile(data);
+        if (!cancelled) {
+          setProfile(data);
+          setProfilePhoto(getProfilePhoto(data.id));
+          setProfileLoadError(null);
+          applyProfileToForms(data);
+        }
       })
-      .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+      .catch((error) => {
+        if (!cancelled) {
+          setProfilePhoto(getProfilePhoto(MOCK_PROFILE.id));
+          setProfileLoadError(
+            getApiErrorMessage(
+              error,
+              'Live profile details are unavailable right now. This screen is showing demo data.'
+            )
+          );
+          applyProfileToForms(MOCK_PROFILE);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingProfile(false);
+        }
       });
+
     accountsService
       .getPrimaryAccount()
       .then((data) => {
         if (!cancelled) setAccount(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [languageForm, notificationForm, personalForm]);
+
+  const syncForms = (nextProfile: UserProfile) => {
+    personalForm.setFieldsValue({
+      fullName: nextProfile.fullName,
+      email: nextProfile.email,
+      phoneNumber: nextProfile.phoneNumber,
+      addressLine: nextProfile.addressLine,
+      city: nextProfile.city,
+      country: nextProfile.country,
+    });
+    notificationForm.setFieldsValue(nextProfile.notificationPreferences);
+    languageForm.setFieldsValue({ language: nextProfile.language });
+  };
+
+  const handleProfilePhotoChange = async (file?: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      messageApi.error('Please choose an image file.');
+      return;
+    }
+
+    const photoDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(new Error('Could not read the selected image.'));
+      reader.readAsDataURL(file);
+    }).catch(() => '');
+
+    if (!photoDataUrl) {
+      messageApi.error('We could not upload the selected image.');
+      return;
+    }
+
+    saveProfilePhoto(profile.id, photoDataUrl);
+    setProfilePhoto(photoDataUrl);
+    messageApi.success('Profile picture updated.');
+  };
+
+  const setPanel = (panel: ProfilePanel) => {
+    if (panel === OVERVIEW_PANEL) {
+      setSearchParams({});
+      return;
+    }
+
+    setSearchParams({ panel });
+  };
+
+  const openOtpDialog = (challenge: OtpChallenge, successMessage: string) => {
+    setOtpCode(challenge.demoCode ?? '');
+    setOtpState({ challenge, successMessage });
+  };
+
+  const requestOtpFlow = async (
+    action: Promise<OtpChallenge>,
+    successMessage: string,
+    afterChallenge?: () => void
+  ) => {
+    setSubmitting(true);
+    try {
+      const challenge = await action;
+      afterChallenge?.();
+      openOtpDialog(challenge, successMessage);
+    } catch (error) {
+      setSubmitting(false);
+      setDeviceActionId(null);
+      messageApi.error(
+        getApiErrorMessage(error, 'We could not start the verification step. Please try again.')
+      );
+    }
+  };
+
+  const handleOtpConfirm = async () => {
+    if (!otpState) return;
+    if (otpCode.length !== 6) {
+      messageApi.error('Please enter the 6-digit OTP.');
+      return;
+    }
+
+    setOtpSubmitting(true);
+    try {
+      const updatedProfile = await userService.confirmChange(
+        otpState.challenge.changeRequestId,
+        otpCode
+      );
+      setProfile(updatedProfile);
+      syncForms(updatedProfile);
+      setOtpState(null);
+      setOtpCode('');
+      setSubmitting(false);
+      setDeviceActionId(null);
+      freezeForm.resetFields();
+      messageApi.success(otpState.successMessage);
+    } catch (error) {
+      messageApi.error(
+        getApiErrorMessage(
+          error,
+          'Could not confirm the OTP. Please review the code and try again.'
+        )
+      );
+    } finally {
+      setOtpSubmitting(false);
+    }
+  };
+
+  const handlePersonalSave = async (values: ProfileUpdatePayload) => {
+    const payload: ProfileUpdatePayload = {};
+
+    if (values.fullName?.trim() !== profile.fullName) payload.fullName = values.fullName?.trim();
+    if (values.email?.trim() !== profile.email) payload.email = values.email?.trim();
+    if ((values.phoneNumber ?? '') !== (profile.phoneNumber ?? '')) {
+      payload.phoneNumber = values.phoneNumber ?? '';
+    }
+    if ((values.addressLine ?? '') !== (profile.addressLine ?? '')) {
+      payload.addressLine = values.addressLine ?? '';
+    }
+    if ((values.city ?? '') !== (profile.city ?? '')) payload.city = values.city ?? '';
+    if ((values.country ?? '') !== (profile.country ?? '')) payload.country = values.country ?? '';
+
+    if (Object.keys(payload).length === 0) {
+      messageApi.info('No personal details have changed.');
+      return;
+    }
+
+    await requestOtpFlow(
+      userService.requestProfileUpdate(payload),
+      'Personal details updated successfully.'
+    );
+  };
+
+  const handleNotificationSave = async (values: NotificationPreferences) => {
+    if (
+      values.email === profile.notificationPreferences.email &&
+      values.sms === profile.notificationPreferences.sms &&
+      values.push === profile.notificationPreferences.push
+    ) {
+      messageApi.info('Notification methods are already up to date.');
+      return;
+    }
+
+    await requestOtpFlow(
+      userService.requestNotificationPreferencesUpdate(values),
+      'Notification methods updated successfully.'
+    );
+  };
+
+  const handleLanguageSave = async (values: { language: string }) => {
+    const nextLanguage = values.language?.trim();
+    if (!nextLanguage || nextLanguage === profile.language) {
+      messageApi.info('Language preference is already up to date.');
+      return;
+    }
+
+    await requestOtpFlow(
+      userService.requestProfileUpdate({ language: nextLanguage }),
+      'Language preference updated successfully.'
+    );
+  };
+
+  const handleVerifyDevice = async (deviceId: string) => {
+    const targetDevice = profile.linkedDevices.find((device) => device.id === deviceId);
+    if (!targetDevice) {
+      messageApi.error('We could not find that device.');
+      return;
+    }
+    if (!targetDevice.trusted && !hasDeviceCapacity) {
+      messageApi.error('Maximum linked devices reached.');
+      return;
+    }
+
+    setDeviceActionId(deviceId);
+    await requestOtpFlow(
+      userService.requestDeviceTrust(deviceId),
+      'The device has been verified successfully.'
+    );
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    setDeviceActionId(deviceId);
+    await requestOtpFlow(
+      userService.requestDeviceRevoke(deviceId),
+      'The device has been revoked successfully.'
+    );
+  };
+
+  const handleFreezeSubmit = async () => {
+    const values = await freezeForm.validateFields();
+    await requestOtpFlow(
+      userService.requestAccountFreeze(values.reason?.trim() || undefined),
+      'Your account has been frozen.',
+      () => setFreezeModalOpen(false)
+    );
+  };
+
+  const handleFreezeToggle = async () => {
+    if (profile.frozen) {
+      await requestOtpFlow(
+        userService.requestAccountUnfreeze(),
+        'Your account has been reactivated.'
+      );
+      return;
+    }
+
+    setFreezeModalOpen(true);
+  };
+
+  const handleDownloadMyData = () => {
+    if (profileLoadError) {
+      messageApi.error('Data export is unavailable while `user-service` is offline.');
+      return;
+    }
+
+    messageApi.success('Your secure data export request has been recorded.');
+  };
+
+  const handleChangePasswordRequest = async () => {
+    setPasswordResetSubmitting(true);
+    try {
+      const response = await authService.requestPasswordReset(profile.email);
+      messageApi.success('A secure password reset link has been issued for your account.');
+      navigate(`/reset-password/${response.token}`);
+    } catch (error) {
+      messageApi.error(
+        getApiErrorMessage(error, 'We could not start the password reset flow. Please try again.')
+      );
+    } finally {
+      setPasswordResetSubmitting(false);
+    }
+  };
+
+  const handleReauthenticate = () => {
+    tokenStorage.clear();
+    navigate('/login', { replace: true });
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       await authService.logout();
     } catch {
-      // Endpoint not available yet — proceed to clear the session locally.
+      // If the backend session revoke fails, still clear local tokens.
     } finally {
       tokenStorage.clear();
       navigate('/login', { replace: true });
@@ -146,47 +602,492 @@ const Profile: React.FC = () => {
     {
       label: 'Account',
       rows: [
-        { key: 'personal', label: 'Personal details', trailing: 'Update' },
-        { key: 'security', label: 'Security & login' },
-        { key: 'linked', label: 'Linked accounts', trailing: 'Manage' },
-      ],
-    },
-    {
-      label: 'Preferences',
-      rows: [
+        {
+          key: 'personal',
+          label: 'Personal details',
+          trailing: 'Update',
+          editable: true,
+          onClick: () => setPanel('personal'),
+        },
         {
           key: 'notifications',
-          label: 'Notification settings',
-          trailing: 'Email · SMS · Push',
-          onClick: () => navigate('/notifications'),
+          label: 'Notification methods',
+          trailing: formatNotificationSummary(profile.notificationPreferences),
+          editable: true,
+          onClick: () => setPanel('notifications'),
         },
-        { key: 'language', label: 'Language & region', trailing: 'English' },
+        {
+          key: 'language',
+          label: 'Language',
+          trailing: profile.language,
+          editable: true,
+          onClick: () => setPanel('language'),
+        },
       ],
     },
     {
-      label: 'Support',
+      label: 'Security',
       rows: [
-        { key: 'help', label: 'Help center' },
-        { key: 'contact', label: 'Contact support' },
+        {
+          key: 'devices',
+          label: 'Linked devices',
+          trailing: formatDeviceCount(trustedDeviceCount),
+          editable: true,
+          onClick: () => setPanel('devices'),
+        },
+        {
+          key: 'password',
+          label: 'Change password',
+          trailing: 'Update',
+          editable: true,
+          onClick: () => setPanel('password'),
+        },
+        {
+          key: 'freeze',
+          label: profile.frozen ? 'Reactivate account' : 'Freeze account',
+          trailing: profile.frozen ? 'Reactivate' : 'Protect',
+          onClick: profileLoadError ? undefined : handleFreezeToggle,
+        },
+      ],
+    },
+    {
+      label: 'Data & privacy',
+      rows: [
+        {
+          key: 'download',
+          label: 'Download my data',
+          trailing: 'Request',
+          onClick: handleDownloadMyData,
+        },
       ],
     },
   ];
 
+  const renderPanelShell = (title: string, children: React.ReactNode) => (
+    <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+      {contextHolder}
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
+        <Flex align="center" gap={16} style={{ marginBottom: 24 }}>
+          <LeftOutlined
+            onClick={() => setPanel(OVERVIEW_PANEL)}
+            style={{ fontSize: 20, color: token.colorText, cursor: 'pointer' }}
+          />
+          <Title
+            level={3}
+            className="font-display"
+            style={{ margin: 0, color: token.colorText, fontWeight: 600 }}
+          >
+            {title}
+          </Title>
+        </Flex>
+        {profileLoadError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF7E6',
+              border: '1px solid #FFD591',
+            }}
+          >
+            <Flex vertical gap={10}>
+              <Text style={{ color: '#AD6800', fontWeight: 500 }}>
+                {sessionExpired
+                  ? 'Your session has expired. Please sign in again to continue secure changes.'
+                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+              </Text>
+              {sessionExpired && (
+                <Button
+                  type="primary"
+                  onClick={handleReauthenticate}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Sign in again
+                </Button>
+              )}
+            </Flex>
+          </div>
+        )}
+        {children}
+      </div>
+      <BottomNav accountsPath={`/accounts/${account.id}`} />
+    </div>
+  );
+
+  if (loadingProfile) {
+    return (
+      <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+        <Flex justify="center" align="center" style={{ minHeight: '100vh' }}>
+          <Spin size="large" />
+        </Flex>
+      </div>
+    );
+  }
+
+  if (activePanel === 'personal') {
+    return renderPanelShell(
+      'Personal details',
+      <div
+        style={{
+          background: token.colorBgContainer,
+          borderRadius: 20,
+          border: `1px solid ${token.colorBorder}`,
+          padding: 24,
+        }}
+      >
+        <Form form={personalForm} layout="vertical" onFinish={handlePersonalSave}>
+          <Flex justify="center" style={{ marginBottom: 28 }}>
+            <div style={{ position: 'relative' }}>
+              <Avatar
+                size={96}
+                src={profilePhoto ?? undefined}
+                style={{
+                  background: NAVY,
+                  color: '#FFFFFF',
+                  fontWeight: 600,
+                  fontSize: 28,
+                }}
+              >
+                {!profilePhoto ? getInitials(profile.fullName) : null}
+              </Avatar>
+              <label
+                htmlFor="profile-photo-input"
+                style={{
+                  position: 'absolute',
+                  right: -2,
+                  bottom: -2,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorder}`,
+                  color: token.colorPrimary,
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 18px rgba(11, 27, 43, 0.12)',
+                }}
+              >
+                <CameraOutlined />
+              </label>
+              <input
+                id="profile-photo-input"
+                type="file"
+                accept="image/*"
+                onChange={(event) => void handleProfilePhotoChange(event.target.files?.[0])}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </Flex>
+          <Form.Item label="Full name" name="fullName" rules={[{ required: true }]}>
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item label="Email" name="email" rules={[{ required: true, type: 'email' }]}>
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item label="Phone number" name="phoneNumber">
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item label="Address" name="addressLine">
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item label="City" name="city">
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item label="Country" name="country" style={{ marginBottom: 24 }}>
+            <Input size="large" />
+          </Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            size="large"
+            disabled={Boolean(profileLoadError)}
+            loading={submitting}
+            style={{ height: 52, fontWeight: 600 }}
+          >
+            Save
+          </Button>
+        </Form>
+      </div>
+    );
+  }
+
+  if (activePanel === 'notifications') {
+    return renderPanelShell(
+      'Notification methods',
+      <div
+        style={{
+          background: token.colorBgContainer,
+          borderRadius: 20,
+          border: `1px solid ${token.colorBorder}`,
+          padding: 24,
+        }}
+      >
+        <Form form={notificationForm} layout="vertical" onFinish={handleNotificationSave}>
+          <Flex vertical gap={20} style={{ marginBottom: 28 }}>
+            <Flex justify="space-between" align="center">
+              <Text style={{ fontSize: 16, fontWeight: 600 }}>Email</Text>
+              <Form.Item name="email" valuePropName="checked" noStyle>
+                <Switch />
+              </Form.Item>
+            </Flex>
+            <Flex justify="space-between" align="center">
+              <Text style={{ fontSize: 16, fontWeight: 600 }}>SMS</Text>
+              <Form.Item name="sms" valuePropName="checked" noStyle>
+                <Switch />
+              </Form.Item>
+            </Flex>
+            <Flex justify="space-between" align="center">
+              <Text style={{ fontSize: 16, fontWeight: 600 }}>App alerts</Text>
+              <Form.Item name="push" valuePropName="checked" noStyle>
+                <Switch />
+              </Form.Item>
+            </Flex>
+          </Flex>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 24,
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: token.colorTextTertiary,
+            }}
+          >
+            Security alerts are always delivered by SMS and email. Your preferences below apply to
+            routine account and banking updates, including in-app alerts.
+          </Text>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            size="large"
+            disabled={Boolean(profileLoadError)}
+            loading={submitting}
+            style={{ height: 52, fontWeight: 600 }}
+          >
+            Save
+          </Button>
+        </Form>
+      </div>
+    );
+  }
+
+  if (activePanel === 'language') {
+    return renderPanelShell(
+      'Language',
+      <div
+        style={{
+          background: token.colorBgContainer,
+          borderRadius: 20,
+          border: `1px solid ${token.colorBorder}`,
+          padding: 24,
+        }}
+      >
+        <Form form={languageForm} layout="vertical" onFinish={handleLanguageSave}>
+          <Form.Item label="Preferred language" name="language" rules={[{ required: true }]}>
+            <Select
+              size="large"
+              options={LANGUAGE_OPTIONS.map((language) => ({ label: language, value: language }))}
+            />
+          </Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            size="large"
+            disabled={Boolean(profileLoadError)}
+            loading={submitting}
+            style={{ height: 52, fontWeight: 600 }}
+          >
+            Save
+          </Button>
+        </Form>
+      </div>
+    );
+  }
+
+  if (activePanel === 'devices') {
+    return renderPanelShell(
+      'Linked devices',
+      <div>
+        {!hasDeviceCapacity && pendingDevices.length > 0 && (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF2F0',
+              border: '1px solid #FFCCC7',
+            }}
+          >
+            <Text style={{ color: token.colorError, fontWeight: 500 }}>
+              Maximum linked devices reached.
+            </Text>
+          </div>
+        )}
+
+        <div
+          style={{
+            background: token.colorBgContainer,
+            borderRadius: 20,
+            border: `1px solid ${token.colorBorder}`,
+            padding: 24,
+          }}
+        >
+          {pendingDevices.length > 0 && (
+            <>
+              <Text
+                style={{
+                  display: 'block',
+                  marginBottom: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Pending verification
+              </Text>
+              <Flex vertical gap={12} style={{ marginBottom: linkedDevices.length > 0 ? 24 : 0 }}>
+                {pendingDevices.map((device) => (
+                  <DeviceRow
+                    key={device.id}
+                    device={device}
+                    busy={submitting && deviceActionId === device.id}
+                    disabled={Boolean(profileLoadError)}
+                    onVerify={handleVerifyDevice}
+                    onRevoke={handleRevokeDevice}
+                  />
+                ))}
+              </Flex>
+            </>
+          )}
+
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 10,
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: token.colorTextTertiary,
+            }}
+          >
+            Linked devices
+          </Text>
+          <Flex vertical gap={12}>
+            {linkedDevices.map((device) => (
+              <DeviceRow
+                key={device.id}
+                device={device}
+                busy={submitting && deviceActionId === device.id}
+                disabled={Boolean(profileLoadError)}
+                onVerify={handleVerifyDevice}
+                onRevoke={handleRevokeDevice}
+              />
+            ))}
+          </Flex>
+        </div>
+      </div>
+    );
+  }
+
+  if (activePanel === 'password') {
+    return renderPanelShell(
+      'Change password',
+      <div
+        style={{
+          background: token.colorBgContainer,
+          borderRadius: 20,
+          border: `1px solid ${token.colorBorder}`,
+          padding: 24,
+        }}
+      >
+        <Text style={{ display: 'block', marginBottom: 8, fontSize: 15, fontWeight: 600 }}>
+          Registered email
+        </Text>
+        <Text style={{ display: 'block', marginBottom: 18, color: token.colorTextSecondary }}>
+          {profile.email}
+        </Text>
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 24,
+            fontSize: 14,
+            lineHeight: 1.6,
+            color: token.colorTextSecondary,
+          }}
+        >
+          For your protection, password changes use our secure recovery flow. We will issue a reset
+          link to your registered email, and you will confirm the new password with your 6-digit
+          authenticator code.
+        </Text>
+        <Button
+          type="primary"
+          block
+          size="large"
+          disabled={Boolean(profileLoadError)}
+          loading={passwordResetSubmitting}
+          onClick={handleChangePasswordRequest}
+          style={{ height: 52, fontWeight: 600 }}
+        >
+          Continue
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+      {contextHolder}
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
+        {profileLoadError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF7E6',
+              border: '1px solid #FFD591',
+            }}
+          >
+            <Flex vertical gap={10}>
+              <Text style={{ color: '#AD6800', fontWeight: 500 }}>
+                {sessionExpired
+                  ? 'Your session has expired. Please sign in again to continue secure changes.'
+                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+              </Text>
+              {sessionExpired && (
+                <Button
+                  type="primary"
+                  onClick={handleReauthenticate}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Sign in again
+                </Button>
+              )}
+            </Flex>
+          </div>
+        )}
         <Flex align="center" gap={16}>
           <Avatar
             size={64}
+            src={profilePhoto ?? undefined}
             style={{
               background: TEAL_TINT,
               color: token.colorPrimary,
               border: `2px solid ${token.colorPrimary}`,
               fontWeight: 600,
               fontSize: 22,
+              cursor: 'pointer',
             }}
+            onClick={() => setPanel('personal')}
           >
-            {getInitials(profile.fullName)}
+            {!profilePhoto ? getInitials(profile.fullName) : null}
           </Avatar>
           <div>
             <Title
@@ -203,7 +1104,13 @@ const Profile: React.FC = () => {
         </Flex>
 
         <TrustIndicator
-          text={profile.deviceVerified ? 'This device is verified' : 'This device is not verified'}
+          text={
+            profile.frozen
+              ? 'This account is temporarily frozen for your protection.'
+              : profile.idVerified
+                ? 'Your identity is verified and protected.'
+                : 'Identity verification is still in progress.'
+          }
         />
 
         <div
@@ -228,13 +1135,17 @@ const Profile: React.FC = () => {
           </Text>
           <Flex vertical gap={16}>
             <SecurityStatusRow
-              label="Two-factor authentication"
-              value={profile.twoFactorEnabled ? 'Active' : 'Inactive'}
+              label="Account status"
+              value={profile.frozen ? 'Frozen' : formatStatusLabel(profile.status)}
             />
-            <SecurityStatusRow label="Last verified session" value={profile.lastVerifiedSession} />
+            <SecurityStatusRow label="Two-factor authentication" value="Active" />
+            <SecurityStatusRow
+              label="Last verified session"
+              value={formatLastVerifiedSession(profile.linkedDevices)}
+            />
             <SecurityStatusRow
               label="Trusted devices"
-              value={`${profile.trustedDevicesCount} device${profile.trustedDevicesCount === 1 ? '' : 's'}`}
+              value={`${trustedDeviceCount} device${trustedDeviceCount === 1 ? '' : 's'}`}
             />
           </Flex>
         </div>
@@ -267,6 +1178,7 @@ const Profile: React.FC = () => {
                   key={row.key}
                   label={row.label}
                   trailing={row.trailing}
+                  editable={row.editable}
                   onClick={row.onClick}
                   showDivider={index < section.rows.length - 1}
                 />
@@ -304,12 +1216,87 @@ const Profile: React.FC = () => {
         >
           <LogoutOutlined style={{ color: token.colorError }} />
           <Text style={{ color: token.colorError, fontWeight: 600, fontSize: 15 }}>
-            {loggingOut ? 'Logging out…' : 'Log out'}
+            {loggingOut ? 'Logging out...' : 'Log out'}
           </Text>
         </Flex>
       </div>
 
       <BottomNav accountsPath={`/accounts/${account.id}`} />
+
+      <Modal
+        open={freezeModalOpen}
+        onCancel={() => {
+          if (!submitting) {
+            setFreezeModalOpen(false);
+            freezeForm.resetFields();
+          }
+        }}
+        onOk={handleFreezeSubmit}
+        okText="Continue"
+        confirmLoading={submitting}
+        title="Freeze account"
+      >
+        <Text style={{ display: 'block', marginBottom: 16, color: token.colorTextSecondary }}>
+          Add a short reason for the freeze. You will confirm the request with an OTP.
+        </Text>
+        <Form form={freezeForm} layout="vertical">
+          <Form.Item label="Reason" name="reason">
+            <Input.TextArea rows={4} maxLength={180} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(otpState)}
+        onCancel={() => {
+          if (!otpSubmitting) {
+            setOtpState(null);
+            setOtpCode('');
+            setSubmitting(false);
+            setDeviceActionId(null);
+          }
+        }}
+        onOk={handleOtpConfirm}
+        okText="Verify"
+        confirmLoading={otpSubmitting}
+        title="Enter OTP"
+      >
+        <Text style={{ display: 'block', marginBottom: 8, color: token.colorTextSecondary }}>
+          {otpState?.challenge.message}
+        </Text>
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 16,
+            fontSize: 13,
+            color: token.colorTextTertiary,
+          }}
+        >
+          Delivery target: {otpState?.challenge.deliveryTarget}
+        </Text>
+        {otpState?.challenge.demoCode && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: TEAL_TINT,
+            }}
+          >
+            <Text style={{ fontSize: 13, color: token.colorPrimary }}>
+              Demo OTP for local development: {otpState.challenge.demoCode}
+            </Text>
+          </div>
+        )}
+        <Input
+          value={otpCode}
+          onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          maxLength={6}
+          size="large"
+          placeholder="Enter 6-digit OTP"
+          inputMode="numeric"
+        />
+      </Modal>
     </div>
   );
 };

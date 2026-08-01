@@ -1,31 +1,118 @@
 # User & RBAC Service (`user-service`)
 
-The **User Service** manages customer profile data, contact preferences, linked devices, and Role-Based Access Control (RBAC) permissions.
+The **User Service** manages customer profile data, contact preferences, linked devices, staged OTP-confirmed account changes, and role-based administration.
 
 ---
 
-## 🎯 What to Develop
+## What It Covers
 
-- **Profile Management**: CRUD operation endpoints for updating user profiles and notification channels (`FR-07`).
-- **Role-Based Access Control (RBAC)**: Manage granular roles (Customer, Merchant, Bank Officer, Administrator) (`FR-08`).
-- **Device Linking**: Maintain records of authorized user devices.
+- Profile management
+- Notification preference updates
+- Linked device management
+- Freeze and unfreeze actions
+- RBAC directory operations for staff
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 - JDK 21 LTS
 - Apache Maven 3.9+
-- PostgreSQL 16 (`localhost:5432`)
+- PostgreSQL 16 on `localhost:5432`
 
 ---
 
-## 🚀 How to Setup & Run
+## Run Locally
 
 ```bash
 docker compose up -d postgres
-mvn clean compile
-mvn spring-boot:run
+mvn -pl backend/user-service spring-boot:run
 ```
 
-The service will start on port `8083`.
+The service starts on port `8083`.
+
+Local walkthrough accounts are now expected to exist in the development database already rather than being inserted at startup.
+
+---
+
+## Caller Identity
+
+Every endpoint resolves the caller from the bearer access token.
+
+- `user-service` validates the JWT locally using `jwt.secret`
+- forwarded `X-User-Id` and `X-User-Role` headers are treated only as consistency checks
+- direct header spoofing is rejected
+
+Header-less demo impersonation is also off by default. Only enable it deliberately for local prototyping:
+
+```powershell
+$env:SECUREBANK_USER_ALLOW_UNAUTHENTICATED_DEMO_CALLER="true"
+```
+
+---
+
+## API
+
+Self-service routes live under `/api/v1/users`. Every mutation is staged first and only takes effect after OTP confirmation.
+
+| Method | Path                                    | Purpose                               |
+| :----- | :-------------------------------------- | :------------------------------------ |
+| `GET`  | `/me`                                   | Current profile, preferences, devices |
+| `POST` | `/me/profile-change`                    | Stage contact detail changes          |
+| `POST` | `/me/notification-preferences-change`   | Stage notification preference changes |
+| `POST` | `/me/devices/link`                      | Stage a new linked device             |
+| `POST` | `/me/devices/trust`                     | Stage marking a device trusted        |
+| `POST` | `/me/devices/revoke`                    | Stage revoking a device               |
+| `POST` | `/me/freeze`                            | Stage an account freeze               |
+| `POST` | `/me/unfreeze`                          | Stage an account unfreeze             |
+| `POST` | `/me/changes/{changeRequestId}/confirm` | Confirm a staged change with the OTP  |
+
+Administration routes live under `/api/v1/users/admin`.
+
+| Method  | Path               | Required role             |
+| :------ | :----------------- | :------------------------ |
+| `GET`   | `/`                | `ADMIN` or `BANK_OFFICER` |
+| `GET`   | `/{userId}`        | `ADMIN` or `BANK_OFFICER` |
+| `PATCH` | `/{userId}/status` | `ADMIN` or `BANK_OFFICER` |
+| `PATCH` | `/{userId}/role`   | `ADMIN` only              |
+
+---
+
+## OTP Behavior
+
+Each challenge issues a six-digit code, stores only a BCrypt digest, and burns the challenge after too many wrong attempts.
+
+OTP echoing is off by default. If you need the browser-only local demo mode, opt in explicitly:
+
+```powershell
+$env:SECUREBANK_USER_OTP_EXPOSE_CODE="true"
+```
+
+When that flag is enabled, the generated code is returned in the challenge response so the UI can display it. Otherwise, delivery belongs to the notification flow.
+
+---
+
+## Configuration
+
+| Property                                                     | Default                 | Purpose                                             |
+| :----------------------------------------------------------- | :---------------------- | :-------------------------------------------------- |
+| `securebank.user.otp.ttl`                                    | `PT5M`                  | Challenge lifetime                                  |
+| `securebank.user.otp.max-attempts`                           | `5`                     | Wrong codes before a challenge is burned            |
+| `securebank.user.otp.expose-code`                            | `false`                 | Return the generated OTP in the response            |
+| `securebank.user.security.allow-unauthenticated-demo-caller` | `false`                 | Resolve token-less requests to the seeded demo user |
+| `securebank.user.cors.allowed-origins`                       | `localhost:3000/5173`   | Direct browser access during development            |
+| `jwt.secret`                                                 | shared local dev secret | JWT validation secret                               |
+
+Database credentials come from:
+
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
+
+---
+
+## Tests
+
+```bash
+mvn -pl backend/user-service test
+```

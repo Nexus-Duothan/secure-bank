@@ -1,6 +1,10 @@
 package com.securebank.auth.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -21,11 +25,13 @@ import com.securebank.auth.enums.Role;
 import com.securebank.auth.enums.UserStatus;
 import com.securebank.auth.repository.UserCredentialRepository;
 import com.securebank.auth.security.JwtTokenProvider;
+import com.securebank.auth.service.notification.LoginSmsAlertService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -54,6 +60,9 @@ class AuthControllerTest {
   @Autowired
   private JwtTokenProvider tokenProvider;
 
+  @SpyBean
+  private LoginSmsAlertService loginSmsAlertService;
+
   private UserCredential testUser;
   private UserCredential officerUser;
 
@@ -68,6 +77,7 @@ class AuthControllerTest {
         .passwordHash(passwordEncoder.encode("Secret123!"))
         .nationalIdOrPassport("NIC-987654321V")
         .fullName("Test Customer")
+        .phoneNumber("+94 77 123 4567")
         .role(Role.CUSTOMER)
         .status(UserStatus.PENDING_KYC)
         .mfaEnabled(true)
@@ -81,6 +91,7 @@ class AuthControllerTest {
         .passwordHash(passwordEncoder.encode("Officer123!"))
         .nationalIdOrPassport("OFFICER-001")
         .fullName("Bank Officer One")
+        .phoneNumber("+94 77 900 1122")
         .role(Role.BANK_OFFICER)
         .status(UserStatus.ACTIVE)
         .mfaEnabled(true)
@@ -96,6 +107,7 @@ class AuthControllerTest {
       .password("Password123!")
       .nationalIdOrPassport("NIC-11223344")
       .fullName("New Customer")
+      .phoneNumber("+94 77 555 0101")
       .build();
 
     mockMvc
@@ -147,6 +159,14 @@ class AuthControllerTest {
       .andExpect(jsonPath("$.accessToken").exists())
       .andExpect(jsonPath("$.refreshToken").exists())
       .andExpect(jsonPath("$.tokenType").value("Bearer"));
+
+    verify(loginSmsAlertService).sendSuccessfulLoginAlert(
+      eq("+94 77 123 4567"),
+      eq("Test Customer"),
+      contains("127."),
+      eq("Unknown Device"),
+      any()
+    );
   }
 
   @Test
