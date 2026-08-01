@@ -100,15 +100,28 @@ class TransferControllerTest {
   }
 
   @Test
-  void createTransfer_completesImmediately_forTheLegacySingleShotEndpoint() throws Exception {
+  void quote_thenConfirm_completesTheTransfer() throws Exception {
     TransferQuoteRequest request = new TransferQuoteRequest("acc-demo-primary", "acc-other", new BigDecimal("50"), null);
 
-    mockMvc
+    String quoteBody = mockMvc
       .perform(
-        post("/api/v1/transfers/")
+        post("/api/v1/transfers/quote")
           .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
           .contentType(MediaType.APPLICATION_JSON)
           .content(objectMapper.writeValueAsString(request))
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.status").value("PENDING_CONFIRMATION"))
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    String transferId = objectMapper.readTree(quoteBody).get("id").asText();
+
+    mockMvc
+      .perform(
+        post("/api/v1/transfers/{id}/confirm", transferId)
+          .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("COMPLETED"))

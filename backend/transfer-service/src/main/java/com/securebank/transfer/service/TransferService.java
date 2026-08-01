@@ -9,6 +9,7 @@ import com.securebank.transfer.entity.Transfer;
 import com.securebank.transfer.entity.TransferDailyUsage;
 import com.securebank.transfer.enums.TransferStatus;
 import com.securebank.transfer.messaging.TransferEventPublisher;
+import com.securebank.transfer.repository.PayeeRepository;
 import com.securebank.transfer.repository.TransferDailyUsageRepository;
 import com.securebank.transfer.repository.TransferRepository;
 import com.securebank.transfer.security.CallerIdentity;
@@ -25,10 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
  * Internal Account-to-Account transfer orchestration (FR-14).
  *
  * <p>A transfer is always quoted before it executes (FR-17): {@link #quote} validates the request
- * and balance and stages a {@code PENDING_CONFIRMATION} row; {@link #confirm} re-validates under a
- * transaction and a locked daily-usage counter before moving money. Confirming an
- * already-{@code COMPLETED} transfer is a no-op that returns the original result, so a retried
- * confirm (client timeout, double click) can never execute twice (NFR-R2).
+ * and balance and stages a {@code PENDING_CONFIRMATION} row; {@link #confirm} locks that row and the
+ * day's usage counter before moving money, so two concurrent confirms on the same transfer
+ * serialise instead of both executing. Confirming an already-{@code COMPLETED} transfer is a no-op
+ * that returns the original result, so a retried confirm (client timeout, double click) can never
+ * execute twice (NFR-R2).
  */
 @Service
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class TransferService {
 
   private final TransferRepository transferRepository;
   private final TransferDailyUsageRepository dailyUsageRepository;
+  private final PayeeRepository payeeRepository;
   private final AccountsClient accountsClient;
   private final TransferServiceProperties properties;
   private final TransferEventPublisher eventPublisher;
@@ -66,6 +69,7 @@ public class TransferService {
         "Amount exceeds the per-transaction limit of " + properties.limits().perTransaction()
       );
     }
+    assertPayeeNotCoolingOff(caller.userId(), request.toAccount(), request.amount());
 
     AccountSnapshot account = accountsClient.getAccount(request.fromAccountId());
     BigDecimal totalDebit = request.amount().add(FEE);
@@ -92,7 +96,9 @@ public class TransferService {
 
   @Transactional
   public TransferResponse confirm(CallerIdentity caller, UUID transferId) {
-    Transfer transfer = findOwned(caller, transferId);
+    Transfer transfer = transferRepository
+      .findForUpdateByIdAndInitiatedByUserId(transferId, caller.userId())
+      .orElseThrow(() -> new EntityNotFoundException("Transfer not found"));
 
     if (transfer.getStatus() == TransferStatus.COMPLETED) {
       return TransferResponse.from(transfer);
@@ -132,25 +138,6 @@ public class TransferService {
     return TransferResponse.from(saved);
   }
 
-  /**
-   * Single-shot compatibility path for the current frontend, which doesn't yet render a
-   * confirmation screen between submit and execution. Quotes and immediately confirms in the same
-   * transaction; once the UI grows a review step, callers should move to {@link #quote} +
-   * {@link #confirm}.
-   */
-  @Transactional
-  public TransferResponse quoteAndConfirm(
-    CallerIdentity caller,
-    TransferQuoteRequest request,
-    String idempotencyKey
-  ) {
-    TransferResponse quoted = quote(caller, request, idempotencyKey);
-    if (quoted.status() != TransferStatus.PENDING_CONFIRMATION) {
-      return quoted;
-    }
-    return confirm(caller, quoted.id());
-  }
-
   @Transactional(readOnly = true)
   public TransferResponse get(CallerIdentity caller, UUID transferId) {
     return TransferResponse.from(findOwned(caller, transferId));
@@ -162,6 +149,20 @@ public class TransferService {
     Transfer saved = transferRepository.save(transfer);
     eventPublisher.publishFailed(saved, reason);
     return TransferResponse.from(saved);
+  }
+
+  private void assertPayeeNotCoolingOff(UUID ownerUserId, String toAccount, BigDecimal amount) {
+    if (amount.compareTo(properties.limits().payeeCoolingOffThreshold()) < 0) {
+      return;
+    }
+    payeeRepository
+      .findByOwnerUserIdAndAccountReferenceIgnoreCase(ownerUserId, toAccount)
+      .filter(payee -> payee.isCoolingOff(Instant.now()))
+      .ifPresent(payee -> {
+        throw new PayeeCoolingOffException(
+          "This payee is still within its 12-hour cooling-off period for transfers of this size"
+        );
+      });
   }
 
   private void assertWithinDailyLimit(String accountId, BigDecimal amount, BigDecimal usedToday) {

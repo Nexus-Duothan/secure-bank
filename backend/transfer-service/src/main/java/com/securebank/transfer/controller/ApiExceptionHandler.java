@@ -3,9 +3,12 @@ package com.securebank.transfer.controller;
 import com.securebank.transfer.client.AccountNotFoundException;
 import com.securebank.transfer.client.AccountsUnavailableException;
 import com.securebank.transfer.security.AccessDeniedException;
+import com.securebank.transfer.service.ConflictException;
 import com.securebank.transfer.service.InsufficientFundsException;
 import com.securebank.transfer.service.InvalidTransferStateException;
 import com.securebank.transfer.service.LimitExceededException;
+import com.securebank.transfer.service.OtpVerificationException;
+import com.securebank.transfer.service.PayeeCoolingOffException;
 import jakarta.persistence.EntityNotFoundException;
 import java.time.Instant;
 import java.util.Map;
@@ -51,6 +54,23 @@ public class ApiExceptionHandler {
     InvalidTransferStateException exception
   ) {
     return error(HttpStatus.CONFLICT, exception.getMessage());
+  }
+
+  @ExceptionHandler(PayeeCoolingOffException.class)
+  public ResponseEntity<Map<String, Object>> handlePayeeCoolingOff(
+    PayeeCoolingOffException exception
+  ) {
+    return error(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+  }
+
+  @ExceptionHandler(ConflictException.class)
+  public ResponseEntity<Map<String, Object>> handleConflict(ConflictException exception) {
+    return error(HttpStatus.CONFLICT, exception.getMessage());
+  }
+
+  @ExceptionHandler(OtpVerificationException.class)
+  public ResponseEntity<Map<String, Object>> handleOtpFailure(OtpVerificationException exception) {
+    return error(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
   }
 
   @ExceptionHandler(AccountsUnavailableException.class)

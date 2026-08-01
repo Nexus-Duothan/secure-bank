@@ -23,6 +23,11 @@ securebank:
     limits:
       per-transaction: 1000
       daily: 1500
+      payee-cooling-off-threshold: 500
+    otp:
+      ttl: PT5M
+      max-attempts: 5
+      expose-code: true
 
 jwt:
   secret: dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=

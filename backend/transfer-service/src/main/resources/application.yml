@@ -34,6 +34,14 @@ securebank:
       # FR-18: platform-wide defaults; a lower personal limit can be layered on later.
       per-transaction: 500000
       daily: 1000000
+      # FR-16: transfers at or above this amount are blocked while a payee is cooling off.
+      payee-cooling-off-threshold: 50000
+    otp:
+      ttl: PT5M
+      max-attempts: 5
+      # Local prototype only: set this to true only when you explicitly want the generated OTP
+      # echoed back in the challenge response for a browser-only demo.
+      expose-code: ${SECUREBANK_TRANSFER_OTP_EXPOSE_CODE:false}
     accounts-client:
       # accounts-service has no real ledger yet (mocked balances) - this base URL is the seam
       # that starts returning live balances once that service is implemented.

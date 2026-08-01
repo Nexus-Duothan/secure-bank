@@ -44,17 +44,4 @@ public class TransferController {
   public ResponseEntity<TransferResponse> getTransfer(CallerIdentity caller, @PathVariable UUID id) {
     return ResponseEntity.ok(transferService.get(caller, id));
   }
-
-  /**
-   * Legacy single-shot endpoint kept for the current frontend, which submits a transfer without an
-   * intermediate confirmation screen yet. Quotes and confirms in one call.
-   */
-  @PostMapping("/")
-  public ResponseEntity<TransferResponse> createTransfer(
-    CallerIdentity caller,
-    @Valid @RequestBody TransferQuoteRequest request,
-    @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
-  ) {
-    return ResponseEntity.ok(transferService.quoteAndConfirm(caller, request, idempotencyKey));
-  }
 }

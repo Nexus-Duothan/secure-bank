@@ -12,15 +12,18 @@ import com.securebank.transfer.client.AccountsClient;
 import com.securebank.transfer.config.TransferServiceProperties;
 import com.securebank.transfer.dto.TransferQuoteRequest;
 import com.securebank.transfer.dto.TransferResponse;
+import com.securebank.transfer.entity.Payee;
 import com.securebank.transfer.entity.Transfer;
 import com.securebank.transfer.entity.TransferDailyUsage;
 import com.securebank.transfer.enums.TransferStatus;
 import com.securebank.transfer.messaging.TransferEventPublisher;
+import com.securebank.transfer.repository.PayeeRepository;
 import com.securebank.transfer.repository.TransferDailyUsageRepository;
 import com.securebank.transfer.repository.TransferRepository;
 import com.securebank.transfer.security.CallerIdentity;
 import jakarta.persistence.EntityNotFoundException;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,6 +48,9 @@ class TransferServiceTest {
   private TransferDailyUsageRepository dailyUsageRepository;
 
   @Mock
+  private PayeeRepository payeeRepository;
+
+  @Mock
   private AccountsClient accountsClient;
 
   @Mock
@@ -56,13 +62,19 @@ class TransferServiceTest {
   void setUp() {
     TransferServiceProperties properties = new TransferServiceProperties(
       null,
-      new TransferServiceProperties.Limits(new BigDecimal("1000"), new BigDecimal("1500")),
+      new TransferServiceProperties.Limits(
+        new BigDecimal("1000"),
+        new BigDecimal("1500"),
+        new BigDecimal("300")
+      ),
+      null,
       null,
       null
     );
     transferService = new TransferService(
       transferRepository,
       dailyUsageRepository,
+      payeeRepository,
       accountsClient,
       properties,
       eventPublisher
@@ -129,6 +141,71 @@ class TransferServiceTest {
   }
 
   @Test
+  void quote_rejectsLargeTransferToPayeeStillCoolingOff() {
+    when(payeeRepository.findByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, TO_ACCOUNT))
+      .thenReturn(
+        Optional.of(
+          Payee.builder()
+            .ownerUserId(USER_ID)
+            .nickname("A. Silva")
+            .accountReference(TO_ACCOUNT)
+            .coolingOffUntil(Instant.now().plusSeconds(3600))
+            .build()
+        )
+      );
+
+    assertThatThrownBy(() -> transferService.quote(CALLER, request(new BigDecimal("500")), null))
+      .isInstanceOf(PayeeCoolingOffException.class);
+  }
+
+  @Test
+  void quote_allowsSmallTransferToPayeeStillCoolingOff() {
+    when(payeeRepository.findByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, TO_ACCOUNT))
+      .thenReturn(
+        Optional.of(
+          Payee.builder()
+            .ownerUserId(USER_ID)
+            .nickname("A. Silva")
+            .accountReference(TO_ACCOUNT)
+            .coolingOffUntil(Instant.now().plusSeconds(3600))
+            .build()
+        )
+      );
+    when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
+      new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10000"), "LKR")
+    );
+    when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    // Below the cooling-off threshold (300), so it should go through despite the active window.
+    TransferResponse response = transferService.quote(CALLER, request(new BigDecimal("100")), null);
+
+    assertThat(response.status()).isEqualTo(TransferStatus.PENDING_CONFIRMATION);
+  }
+
+  @Test
+  void quote_allowsLargeTransferToPayeeWhoseCoolingOffHasElapsed() {
+    when(payeeRepository.findByOwnerUserIdAndAccountReferenceIgnoreCase(USER_ID, TO_ACCOUNT))
+      .thenReturn(
+        Optional.of(
+          Payee.builder()
+            .ownerUserId(USER_ID)
+            .nickname("A. Silva")
+            .accountReference(TO_ACCOUNT)
+            .coolingOffUntil(Instant.now().minusSeconds(3600))
+            .build()
+        )
+      );
+    when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
+      new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10000"), "LKR")
+    );
+    when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    TransferResponse response = transferService.quote(CALLER, request(new BigDecimal("500")), null);
+
+    assertThat(response.status()).isEqualTo(TransferStatus.PENDING_CONFIRMATION);
+  }
+
+  @Test
   void quote_returnsExistingTransfer_whenIdempotencyKeyAlreadyUsed() {
     Transfer existing = pendingTransfer(new BigDecimal("100")).build();
     when(transferRepository.findByInitiatedByUserIdAndIdempotencyKey(USER_ID, "key-1"))
@@ -156,7 +233,7 @@ class TransferServiceTest {
 
   @Test
   void confirm_throwsNotFound_whenTransferDoesNotBelongToCaller() {
-    when(transferRepository.findByIdAndInitiatedByUserId(any(), any())).thenReturn(Optional.empty());
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(any(), any())).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> transferService.confirm(CALLER, UUID.randomUUID()))
       .isInstanceOf(EntityNotFoundException.class);
@@ -165,7 +242,7 @@ class TransferServiceTest {
   @Test
   void confirm_isIdempotent_whenAlreadyCompleted() {
     Transfer completed = pendingTransfer(new BigDecimal("100")).status(TransferStatus.COMPLETED).build();
-    when(transferRepository.findByIdAndInitiatedByUserId(completed.getId(), USER_ID))
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(completed.getId(), USER_ID))
       .thenReturn(Optional.of(completed));
 
     TransferResponse response = transferService.confirm(CALLER, completed.getId());
@@ -178,7 +255,7 @@ class TransferServiceTest {
   @Test
   void confirm_rejectsReconfirmingAFailedTransfer() {
     Transfer failed = pendingTransfer(new BigDecimal("100")).status(TransferStatus.FAILED).build();
-    when(transferRepository.findByIdAndInitiatedByUserId(failed.getId(), USER_ID))
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(failed.getId(), USER_ID))
       .thenReturn(Optional.of(failed));
 
     assertThatThrownBy(() -> transferService.confirm(CALLER, failed.getId()))
@@ -188,7 +265,7 @@ class TransferServiceTest {
   @Test
   void confirm_marksFailed_whenBalanceDroppedBelowAmountSinceQuote() {
     Transfer pending = pendingTransfer(new BigDecimal("100")).build();
-    when(transferRepository.findByIdAndInitiatedByUserId(pending.getId(), USER_ID))
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(pending.getId(), USER_ID))
       .thenReturn(Optional.of(pending));
     when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
       new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10"), "LKR")
@@ -205,7 +282,7 @@ class TransferServiceTest {
   @Test
   void confirm_updatesDailyUsageAndPublishesEvent_whenSuccessful() {
     Transfer pending = pendingTransfer(new BigDecimal("100")).build();
-    when(transferRepository.findByIdAndInitiatedByUserId(pending.getId(), USER_ID))
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(pending.getId(), USER_ID))
       .thenReturn(Optional.of(pending));
     when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
       new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10000"), "LKR")
@@ -220,6 +297,31 @@ class TransferServiceTest {
       argThatUsageEquals(new BigDecimal("100"))
     );
     verify(eventPublisher).publishCompleted(any());
+  }
+
+  @Test
+  void confirm_secondCallSeesCompletedState_afterFirstCallCommits() {
+    // Simulates two concurrent confirm() calls serialising on the row lock: the second call's
+    // locked read only happens after the first has already flipped the transfer to COMPLETED,
+    // so it must short-circuit instead of re-running the daily-usage update.
+    Transfer pending = pendingTransfer(new BigDecimal("100")).build();
+    when(transferRepository.findForUpdateByIdAndInitiatedByUserId(pending.getId(), USER_ID))
+      .thenReturn(Optional.of(pending))
+      .thenReturn(Optional.of(pending));
+    when(accountsClient.getAccount(FROM_ACCOUNT)).thenReturn(
+      new AccountSnapshot(FROM_ACCOUNT, new BigDecimal("10000"), "LKR")
+    );
+    when(dailyUsageRepository.findForUpdate(FROM_ACCOUNT, LocalDate.now())).thenReturn(Optional.empty());
+    when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    transferService.confirm(CALLER, pending.getId());
+    // The lock would have made the second caller's read observe the first commit's COMPLETED
+    // status in production; here we assert the object mutated in place reflects that.
+    TransferResponse second = transferService.confirm(CALLER, pending.getId());
+
+    assertThat(second.status()).isEqualTo(TransferStatus.COMPLETED);
+    verify(dailyUsageRepository, org.mockito.Mockito.times(1)).save(any());
+    verify(eventPublisher, org.mockito.Mockito.times(1)).publishCompleted(any());
   }
 
   private TransferDailyUsage argThatUsageEquals(BigDecimal expected) {
