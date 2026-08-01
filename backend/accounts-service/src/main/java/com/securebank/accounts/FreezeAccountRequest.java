@@ -1,4 +1,4 @@
-package com.securebank.user.dto;
+package com.securebank.accounts;
 
 import jakarta.validation.constraints.Size;
 

@@ -1,6 +1,7 @@
 import { createApiClient } from './createApiClient';
 import tokenStorage from './tokenStorage';
 
+const publicClient = createApiClient('/api/v1/auth', { attachAccessToken: false });
 const client = createApiClient('/api/v1/auth');
 
 export interface LoginPayload {
@@ -76,17 +77,21 @@ export interface SessionInfo {
 export const authService = {
   client,
   login: (payload: LoginPayload) =>
-    client.post<PreAuthResponse>('/login', payload).then((response) => response.data),
+    publicClient.post<PreAuthResponse>('/login', payload).then((response) => response.data),
   verifyOtp: (payload: VerifyOtpPayload) =>
-    client.post<AuthTokenResponse>('/login/verify-mfa', payload).then((response) => response.data),
+    publicClient
+      .post<AuthTokenResponse>('/login/verify-mfa', payload)
+      .then((response) => response.data),
   createAccount: (payload: CreateAccountPayload) =>
-    client.post<CreateAccountResponse>('/register', payload).then((response) => response.data),
+    publicClient
+      .post<CreateAccountResponse>('/register', payload)
+      .then((response) => response.data),
   requestPasswordReset: (email: string) =>
-    client
+    publicClient
       .post<RequestPasswordResetResponse>('/password-reset/request', { email })
       .then((response) => response.data),
   resetPassword: (token: string, newPassword: string, totpCode: string) =>
-    client
+    publicClient
       .post<ResetPasswordResponse>('/password-reset/confirm', { token, newPassword, totpCode })
       .then((response) => response.data),
   getSessions: () => {

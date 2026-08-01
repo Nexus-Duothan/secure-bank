@@ -14,13 +14,13 @@ import {
 } from 'antd';
 import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import paymentsService from '../../api/paymentsService';
-import { DEMO_PRIMARY_ACCOUNT, DEMO_SECONDARY_ACCOUNT } from '../../mocks/demoCustomer';
+import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
 const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
-const SECONDARY_ACCOUNT = DEMO_SECONDARY_ACCOUNT;
 
 type BillerCategory = 'Electricity' | 'Water' | 'Internet' | 'Mobile';
 
@@ -59,6 +59,7 @@ const PayVendor: React.FC = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm<PayBillFormValues>();
   const [fromAccount, setFromAccount] = useState<Account>(MOCK_FROM_ACCOUNT);
+  const [accounts, setAccounts] = useState<Account[]>([MOCK_FROM_ACCOUNT]);
   const [category, setCategory] = useState<BillerCategory>('Electricity');
   const [amount, setAmount] = useState<number>(BILLER_PRESETS.Electricity.amount);
   const [submitting, setSubmitting] = useState(false);
@@ -67,9 +68,16 @@ const PayVendor: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     accountsService
-      .getPrimaryAccount()
+      .getAccounts()
       .then((data) => {
-        if (!cancelled) setFromAccount(data);
+        if (!cancelled && data.length > 0) {
+          const selected =
+            data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
+            data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setAccounts(data);
+          setFromAccount(selected);
+        }
       })
       .catch(() => {
         // Endpoint not available yet - fall back to the placeholder shown above.
@@ -117,13 +125,10 @@ const PayVendor: React.FC = () => {
     }
   };
 
-  const fromAccountOptions = [
-    {
-      value: fromAccount.id,
-      label: `${fromAccount.nickname} - ${formatCurrency(fromAccount.currency, fromAccount.balance)}`,
-    },
-    { value: SECONDARY_ACCOUNT.id, label: SECONDARY_ACCOUNT.label },
-  ];
+  const fromAccountOptions = accounts.map((account) => ({
+    value: account.id,
+    label: `${account.nickname} - ${formatCurrency(account.currency, account.balance)}`,
+  }));
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -230,7 +235,14 @@ const PayVendor: React.FC = () => {
               style={{ marginBottom: 0 }}
               rules={[{ required: true, message: 'Please select an account to pay from' }]}
             >
-              <Select size="large" options={fromAccountOptions} />
+              <Select
+                size="large"
+                options={fromAccountOptions}
+                onChange={(accountId) => {
+                  const selected = accounts.find((account) => account.id === accountId);
+                  if (selected) setFromAccount(selected);
+                }}
+              />
             </Form.Item>
           </Form>
         </Card>
