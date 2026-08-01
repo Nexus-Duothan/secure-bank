@@ -21,7 +21,6 @@ spring:
 
 securebank:
   user:
-    seed-demo-data: true
     cors:
       allowed-origins:
         - http://localhost:3000
@@ -29,10 +28,13 @@ securebank:
     otp:
       ttl: PT5M
       max-attempts: 5
-      # Local prototype only: echoes the generated code back in the challenge response so the
-      # web UI can be demoed without the notification-service. MUST be false outside local dev.
-      expose-code: true
+      # Local prototype only: set this to true only when you explicitly want the generated OTP
+      # echoed back in the challenge response for a browser-only demo.
+      expose-code: ${SECUREBANK_USER_OTP_EXPOSE_CODE:false}
     security:
-      # Until the API Gateway issues verified JWTs, requests without an X-User-Id header are
-      # resolved to the seeded demo customer. MUST be false outside local dev (NFR-S3).
-      allow-unauthenticated-demo-caller: true
+      # Local prototype escape hatch only. Keep this false unless you explicitly want
+      # header-less requests to impersonate the first seeded demo profile.
+      allow-unauthenticated-demo-caller: ${SECUREBANK_USER_ALLOW_UNAUTHENTICATED_DEMO_CALLER:false}
+
+jwt:
+  secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}

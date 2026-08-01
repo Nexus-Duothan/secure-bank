@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Flex, Typography, message, theme } from 'antd';
+import { LeftOutlined } from '@ant-design/icons';
 import notificationService, {
   type Notification,
   type NotificationType,
@@ -38,6 +40,7 @@ const groupByLabel = (notifications: Notification[]) => {
 
 const Notifications: React.FC = () => {
   const { token } = theme.useToken();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
 
   useEffect(() => {
@@ -71,13 +74,19 @@ const Notifications: React.FC = () => {
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 48px' }}>
         <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-          <Title
-            level={3}
-            className="font-display"
-            style={{ margin: 0, color: token.colorText, fontWeight: 600 }}
-          >
-            Notifications
-          </Title>
+          <Flex align="center" gap={16}>
+            <LeftOutlined
+              onClick={() => navigate('/dashboard')}
+              style={{ fontSize: 20, color: token.colorText, cursor: 'pointer' }}
+            />
+            <Title
+              level={3}
+              className="font-display"
+              style={{ margin: 0, color: token.colorText, fontWeight: 600 }}
+            >
+              Notifications
+            </Title>
+          </Flex>
           {hasUnread && (
             <Link
               onClick={handleMarkAllAsRead}

@@ -15,6 +15,7 @@ import com.securebank.user.repository.UserDeviceRepository;
 import com.securebank.user.repository.UserProfileRepository;
 import com.securebank.user.security.AccessDeniedException;
 import com.securebank.user.security.CallerIdentity;
+import com.securebank.user.service.notification.UserSecurityAlertService;
 import jakarta.persistence.EntityNotFoundException;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -39,6 +40,7 @@ public class UserService {
 
   private static final SecureRandom OTP_RANDOM = new SecureRandom();
   private static final int OTP_BOUND = 1_000_000;
+  private static final int MAX_TRUSTED_DEVICES = 3;
 
   private final UserProfileRepository userProfileRepository;
   private final UserDeviceRepository userDeviceRepository;
@@ -46,6 +48,7 @@ public class UserService {
   private final ObjectMapper objectMapper;
   private final PasswordEncoder otpEncoder;
   private final UserServiceProperties properties;
+  private final UserSecurityAlertService userSecurityAlertService;
 
   // --------------------------------------------------------------------
   // Self-service profile (FR-07)
@@ -90,7 +93,10 @@ public class UserService {
     DeviceActionRequest request
   ) {
     UserProfile profile = findUser(caller.userId());
-    findDevice(profile.getId(), request.deviceId());
+    UserDevice device = findDevice(profile.getId(), request.deviceId());
+    if (!device.isTrusted() && countTrustedDevices(profile.getId()) >= MAX_TRUSTED_DEVICES) {
+      throw new ConflictException("Maximum linked devices reached");
+    }
     return createChallenge(profile, ChangeRequestType.TRUST_DEVICE, request);
   }
 
@@ -148,7 +154,13 @@ public class UserService {
     change.setConfirmed(true);
     change.setConfirmedAt(Instant.now());
     pendingUserChangeRepository.save(change);
-    return toProfileResponse(userProfileRepository.save(profile));
+    UserProfile savedProfile = userProfileRepository.save(profile);
+    userSecurityAlertService.sendCriticalChangeAlert(
+      savedProfile,
+      change.getType(),
+      describeConfirmedChange(savedProfile, change.getType())
+    );
+    return toProfileResponse(savedProfile);
   }
 
   // --------------------------------------------------------------------
@@ -339,8 +351,8 @@ public class UserService {
         .deviceType(request.deviceType())
         .browser(request.browser())
         .location(request.location())
-        .trusted(true)
-        .lastVerifiedAt(Instant.now())
+        .trusted(false)
+        .lastVerifiedAt(null)
         .build()
     );
   }
@@ -397,6 +409,14 @@ public class UserService {
     if (userProfileRepository.existsByEmailIgnoreCaseAndIdNot(email.trim(), profile.getId())) {
       throw new ConflictException("That email address is already registered");
     }
+  }
+
+  private long countTrustedDevices(UUID userId) {
+    return userDeviceRepository
+      .findByUserProfileIdAndRevokedAtIsNullOrderByLastVerifiedAtDesc(userId)
+      .stream()
+      .filter(UserDevice::isTrusted)
+      .count();
   }
 
   private UserProfileResponse toProfileResponse(UserProfile profile) {
@@ -458,5 +478,19 @@ public class UserService {
       return email;
     }
     return email.charAt(0) + "***" + email.substring(at - 1);
+  }
+
+  private String describeConfirmedChange(UserProfile profile, ChangeRequestType type) {
+    return switch (type) {
+      case UPDATE_PROFILE -> "Contact details for " +
+        profile.getFullName() +
+        " were updated after OTP confirmation.";
+      case UPDATE_NOTIFICATION_PREFERENCES -> "Notification delivery preferences were updated after OTP confirmation.";
+      case LINK_DEVICE -> "A new device sign-in request was recorded and is awaiting verification.";
+      case TRUST_DEVICE -> "A new device was verified and linked to the account.";
+      case REVOKE_DEVICE -> "A previously linked device was removed from the account.";
+      case FREEZE_ACCOUNT -> "An account freeze request was confirmed for customer protection.";
+      case UNFREEZE_ACCOUNT -> "The account was reactivated after successful OTP confirmation.";
+    };
   }
 }

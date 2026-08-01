@@ -1,7 +1,8 @@
 import { createApiClient } from './createApiClient';
 import type { NotificationPreferences, OtpChallenge, UserProfile } from '../types';
 
-const client = createApiClient('/api/v1/users');
+const userApiBase = import.meta.env.VITE_USER_API_BASE?.trim() || '/api/v1/users';
+const client = createApiClient(userApiBase);
 
 export type { NotificationPreferences, OtpChallenge, UserDevice, UserProfile } from '../types';
 

@@ -15,16 +15,15 @@ import {
   theme,
 } from 'antd';
 import {
-  DeleteOutlined,
+  CameraOutlined,
   EditOutlined,
   LeftOutlined,
   LogoutOutlined,
-  PlusOutlined,
   RightOutlined,
 } from '@ant-design/icons';
 import authService from '../../api/authService';
+import { getApiErrorMessage } from '../../api/apiError';
 import userService, {
-  type DeviceLinkPayload,
   type NotificationPreferences,
   type OtpChallenge,
   type ProfileUpdatePayload,
@@ -36,6 +35,7 @@ import tokenStorage from '../../api/tokenStorage';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
 import { DEMO_PRIMARY_ACCOUNT, DEMO_PROFILE } from '../../mocks/demoCustomer';
+import { getProfilePhoto, saveProfilePhoto } from '../../utils/profilePhoto';
 
 const { Text, Title } = Typography;
 
@@ -43,7 +43,7 @@ const NAVY = '#0B1B2B';
 const TEAL_TINT = '#DCEFEA';
 const LANGUAGE_OPTIONS = ['English', 'Sinhala', 'Tamil'];
 const OVERVIEW_PANEL = 'overview';
-const PROFILE_PANELS = ['personal', 'notifications', 'language', 'devices'] as const;
+const PROFILE_PANELS = ['personal', 'notifications', 'language', 'devices', 'password'] as const;
 
 type ProfilePanel = (typeof PROFILE_PANELS)[number] | typeof OVERVIEW_PANEL;
 
@@ -53,7 +53,7 @@ interface OtpDialogState {
 }
 
 interface SettingsRowItem {
-  key: ProfilePanel;
+  key: string;
   label: string;
   trailing?: string;
   editable?: boolean;
@@ -72,6 +72,7 @@ interface SecurityStatusRowProps {
 interface DeviceRowProps {
   device: UserDevice;
   busy: boolean;
+  disabled?: boolean;
   onVerify: (deviceId: string) => void;
   onRevoke: (deviceId: string) => void;
 }
@@ -91,7 +92,7 @@ const formatNotificationSummary = (preferences: NotificationPreferences) => {
   const enabled = [
     preferences.email ? 'Email' : null,
     preferences.sms ? 'SMS' : null,
-    preferences.push ? 'Push' : null,
+    preferences.push ? 'App alerts' : null,
   ].filter(Boolean);
 
   return enabled.length > 0 ? enabled.join(' / ') : 'None';
@@ -185,7 +186,7 @@ const SecurityStatusRow: React.FC<SecurityStatusRowProps> = ({ label, value }) =
   </Flex>
 );
 
-const DeviceRow: React.FC<DeviceRowProps> = ({ device, busy, onVerify, onRevoke }) => {
+const DeviceRow: React.FC<DeviceRowProps> = ({ device, busy, disabled, onVerify, onRevoke }) => {
   const { token } = theme.useToken();
 
   return (
@@ -224,13 +225,13 @@ const DeviceRow: React.FC<DeviceRowProps> = ({ device, busy, onVerify, onRevoke 
         >
           {device.trusted
             ? `Trusted / ${formatLastVerifiedSession([device])}`
-            : 'Pending verification'}
+            : 'Waiting for primary-device approval'}
         </Text>
       </div>
 
       <Button
         type="link"
-        disabled={busy}
+        disabled={busy || disabled}
         style={{
           color: device.trusted ? token.colorError : token.colorPrimary,
           fontWeight: 600,
@@ -252,7 +253,6 @@ const Profile: React.FC = () => {
   const [personalForm] = Form.useForm<ProfileUpdatePayload>();
   const [notificationForm] = Form.useForm<NotificationPreferences>();
   const [languageForm] = Form.useForm<{ language: string }>();
-  const [deviceForm] = Form.useForm<DeviceLinkPayload>();
   const [freezeForm] = Form.useForm<{ reason: string }>();
   const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
   const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
@@ -264,13 +264,33 @@ const Profile: React.FC = () => {
   const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [passwordResetSubmitting, setPasswordResetSubmitting] = useState(false);
 
   const activePanel = getPanelFromSearch(searchParams.get('panel'));
   const trustedDeviceCount = useMemo(
     () => profile.linkedDevices.filter((device) => device.trusted).length,
     [profile.linkedDevices]
   );
-  const hasDeviceCapacity = profile.linkedDevices.length < 3;
+  const pendingDevices = useMemo(
+    () => profile.linkedDevices.filter((device) => !device.trusted),
+    [profile.linkedDevices]
+  );
+  const linkedDevices = useMemo(
+    () => profile.linkedDevices.filter((device) => device.trusted),
+    [profile.linkedDevices]
+  );
+  const hasDeviceCapacity = trustedDeviceCount < 3;
+  const sessionExpired = useMemo(() => {
+    const message = profileLoadError?.toLowerCase() ?? '';
+    return (
+      message.includes('access token') ||
+      message.includes('refresh token') ||
+      message.includes('unauthorized') ||
+      message.includes('401')
+    );
+  }, [profileLoadError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -293,11 +313,20 @@ const Profile: React.FC = () => {
       .then((data) => {
         if (!cancelled) {
           setProfile(data);
+          setProfilePhoto(getProfilePhoto(data.id));
+          setProfileLoadError(null);
           applyProfileToForms(data);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
+          setProfilePhoto(getProfilePhoto(MOCK_PROFILE.id));
+          setProfileLoadError(
+            getApiErrorMessage(
+              error,
+              'Live profile details are unavailable right now. This screen is showing demo data.'
+            )
+          );
           applyProfileToForms(MOCK_PROFILE);
         }
       })
@@ -334,6 +363,33 @@ const Profile: React.FC = () => {
     languageForm.setFieldsValue({ language: nextProfile.language });
   };
 
+  const handleProfilePhotoChange = async (file?: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      messageApi.error('Please choose an image file.');
+      return;
+    }
+
+    const photoDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(new Error('Could not read the selected image.'));
+      reader.readAsDataURL(file);
+    }).catch(() => '');
+
+    if (!photoDataUrl) {
+      messageApi.error('We could not upload the selected image.');
+      return;
+    }
+
+    saveProfilePhoto(profile.id, photoDataUrl);
+    setProfilePhoto(photoDataUrl);
+    messageApi.success('Profile picture updated.');
+  };
+
   const setPanel = (panel: ProfilePanel) => {
     if (panel === OVERVIEW_PANEL) {
       setSearchParams({});
@@ -358,10 +414,12 @@ const Profile: React.FC = () => {
       const challenge = await action;
       afterChallenge?.();
       openOtpDialog(challenge, successMessage);
-    } catch {
+    } catch (error) {
       setSubmitting(false);
       setDeviceActionId(null);
-      messageApi.error('We could not start the verification step. Please try again.');
+      messageApi.error(
+        getApiErrorMessage(error, 'We could not start the verification step. Please try again.')
+      );
     }
   };
 
@@ -384,11 +442,15 @@ const Profile: React.FC = () => {
       setOtpCode('');
       setSubmitting(false);
       setDeviceActionId(null);
-      deviceForm.resetFields();
       freezeForm.resetFields();
       messageApi.success(otpState.successMessage);
-    } catch {
-      messageApi.error('Could not confirm the OTP. Please review the code and try again.');
+    } catch (error) {
+      messageApi.error(
+        getApiErrorMessage(
+          error,
+          'Could not confirm the OTP. Please review the code and try again.'
+        )
+      );
     } finally {
       setOtpSubmitting(false);
     }
@@ -448,25 +510,17 @@ const Profile: React.FC = () => {
     );
   };
 
-  const handleLinkDevice = async (values: DeviceLinkPayload) => {
-    if (!hasDeviceCapacity) {
+  const handleVerifyDevice = async (deviceId: string) => {
+    const targetDevice = profile.linkedDevices.find((device) => device.id === deviceId);
+    if (!targetDevice) {
+      messageApi.error('We could not find that device.');
+      return;
+    }
+    if (!targetDevice.trusted && !hasDeviceCapacity) {
       messageApi.error('Maximum linked devices reached.');
       return;
     }
 
-    setDeviceActionId('link-device');
-    await requestOtpFlow(
-      userService.requestDeviceLink({
-        deviceName: values.deviceName.trim(),
-        deviceType: values.deviceType?.trim(),
-        browser: values.browser?.trim(),
-        location: values.location?.trim(),
-      }),
-      'The new device has been linked successfully.'
-    );
-  };
-
-  const handleVerifyDevice = async (deviceId: string) => {
     setDeviceActionId(deviceId);
     await requestOtpFlow(
       userService.requestDeviceTrust(deviceId),
@@ -501,6 +555,35 @@ const Profile: React.FC = () => {
     }
 
     setFreezeModalOpen(true);
+  };
+
+  const handleDownloadMyData = () => {
+    if (profileLoadError) {
+      messageApi.error('Data export is unavailable while `user-service` is offline.');
+      return;
+    }
+
+    messageApi.success('Your secure data export request has been recorded.');
+  };
+
+  const handleChangePasswordRequest = async () => {
+    setPasswordResetSubmitting(true);
+    try {
+      const response = await authService.requestPasswordReset(profile.email);
+      messageApi.success('A secure password reset link has been issued for your account.');
+      navigate(`/reset-password/${response.token}`);
+    } catch (error) {
+      messageApi.error(
+        getApiErrorMessage(error, 'We could not start the password reset flow. Please try again.')
+      );
+    } finally {
+      setPasswordResetSubmitting(false);
+    }
+  };
+
+  const handleReauthenticate = () => {
+    tokenStorage.clear();
+    navigate('/login', { replace: true });
   };
 
   const handleLogout = async () => {
@@ -540,12 +623,41 @@ const Profile: React.FC = () => {
           editable: true,
           onClick: () => setPanel('language'),
         },
+      ],
+    },
+    {
+      label: 'Security',
+      rows: [
         {
           key: 'devices',
           label: 'Linked devices',
-          trailing: formatDeviceCount(profile.linkedDevices.length),
+          trailing: formatDeviceCount(trustedDeviceCount),
           editable: true,
           onClick: () => setPanel('devices'),
+        },
+        {
+          key: 'password',
+          label: 'Change password',
+          trailing: 'Update',
+          editable: true,
+          onClick: () => setPanel('password'),
+        },
+        {
+          key: 'freeze',
+          label: profile.frozen ? 'Reactivate account' : 'Freeze account',
+          trailing: profile.frozen ? 'Reactivate' : 'Protect',
+          onClick: profileLoadError ? undefined : handleFreezeToggle,
+        },
+      ],
+    },
+    {
+      label: 'Data & privacy',
+      rows: [
+        {
+          key: 'download',
+          label: 'Download my data',
+          trailing: 'Request',
+          onClick: handleDownloadMyData,
         },
       ],
     },
@@ -568,6 +680,34 @@ const Profile: React.FC = () => {
             {title}
           </Title>
         </Flex>
+        {profileLoadError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF7E6',
+              border: '1px solid #FFD591',
+            }}
+          >
+            <Flex vertical gap={10}>
+              <Text style={{ color: '#AD6800', fontWeight: 500 }}>
+                {sessionExpired
+                  ? 'Your session has expired. Please sign in again to continue secure changes.'
+                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+              </Text>
+              {sessionExpired && (
+                <Button
+                  type="primary"
+                  onClick={handleReauthenticate}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Sign in again
+                </Button>
+              )}
+            </Flex>
+          </div>
+        )}
         {children}
       </div>
       <BottomNav accountsPath={`/accounts/${account.id}`} />
@@ -596,6 +736,50 @@ const Profile: React.FC = () => {
         }}
       >
         <Form form={personalForm} layout="vertical" onFinish={handlePersonalSave}>
+          <Flex justify="center" style={{ marginBottom: 28 }}>
+            <div style={{ position: 'relative' }}>
+              <Avatar
+                size={96}
+                src={profilePhoto ?? undefined}
+                style={{
+                  background: NAVY,
+                  color: '#FFFFFF',
+                  fontWeight: 600,
+                  fontSize: 28,
+                }}
+              >
+                {!profilePhoto ? getInitials(profile.fullName) : null}
+              </Avatar>
+              <label
+                htmlFor="profile-photo-input"
+                style={{
+                  position: 'absolute',
+                  right: -2,
+                  bottom: -2,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorder}`,
+                  color: token.colorPrimary,
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 18px rgba(11, 27, 43, 0.12)',
+                }}
+              >
+                <CameraOutlined />
+              </label>
+              <input
+                id="profile-photo-input"
+                type="file"
+                accept="image/*"
+                onChange={(event) => void handleProfilePhotoChange(event.target.files?.[0])}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </Flex>
           <Form.Item label="Full name" name="fullName" rules={[{ required: true }]}>
             <Input size="large" />
           </Form.Item>
@@ -619,6 +803,7 @@ const Profile: React.FC = () => {
             htmlType="submit"
             block
             size="large"
+            disabled={Boolean(profileLoadError)}
             loading={submitting}
             style={{ height: 52, fontWeight: 600 }}
           >
@@ -655,17 +840,30 @@ const Profile: React.FC = () => {
               </Form.Item>
             </Flex>
             <Flex justify="space-between" align="center">
-              <Text style={{ fontSize: 16, fontWeight: 600 }}>Push</Text>
+              <Text style={{ fontSize: 16, fontWeight: 600 }}>App alerts</Text>
               <Form.Item name="push" valuePropName="checked" noStyle>
                 <Switch />
               </Form.Item>
             </Flex>
           </Flex>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 24,
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: token.colorTextTertiary,
+            }}
+          >
+            Security alerts are always delivered by SMS and email. Your preferences below apply to
+            routine account and banking updates, including in-app alerts.
+          </Text>
           <Button
             type="primary"
             htmlType="submit"
             block
             size="large"
+            disabled={Boolean(profileLoadError)}
             loading={submitting}
             style={{ height: 52, fontWeight: 600 }}
           >
@@ -699,6 +897,7 @@ const Profile: React.FC = () => {
             htmlType="submit"
             block
             size="large"
+            disabled={Boolean(profileLoadError)}
             loading={submitting}
             style={{ height: 52, fontWeight: 600 }}
           >
@@ -713,19 +912,7 @@ const Profile: React.FC = () => {
     return renderPanelShell(
       'Linked devices',
       <div>
-        <Flex vertical gap={12} style={{ marginBottom: 24 }}>
-          {profile.linkedDevices.map((device) => (
-            <DeviceRow
-              key={device.id}
-              device={device}
-              busy={submitting && deviceActionId === device.id}
-              onVerify={handleVerifyDevice}
-              onRevoke={handleRevokeDevice}
-            />
-          ))}
-        </Flex>
-
-        {!hasDeviceCapacity && (
+        {!hasDeviceCapacity && pendingDevices.length > 0 && (
           <div
             style={{
               marginBottom: 20,
@@ -749,41 +936,107 @@ const Profile: React.FC = () => {
             padding: 24,
           }}
         >
-          <Title
-            level={5}
-            className="font-display"
-            style={{ marginTop: 0, marginBottom: 18, color: token.colorText, fontWeight: 600 }}
-          >
-            Link a new device
-          </Title>
+          {pendingDevices.length > 0 && (
+            <>
+              <Text
+                style={{
+                  display: 'block',
+                  marginBottom: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Pending verification
+              </Text>
+              <Flex vertical gap={12} style={{ marginBottom: linkedDevices.length > 0 ? 24 : 0 }}>
+                {pendingDevices.map((device) => (
+                  <DeviceRow
+                    key={device.id}
+                    device={device}
+                    busy={submitting && deviceActionId === device.id}
+                    disabled={Boolean(profileLoadError)}
+                    onVerify={handleVerifyDevice}
+                    onRevoke={handleRevokeDevice}
+                  />
+                ))}
+              </Flex>
+            </>
+          )}
 
-          <Form form={deviceForm} layout="vertical" onFinish={handleLinkDevice}>
-            <Form.Item label="Device name" name="deviceName" rules={[{ required: true }]}>
-              <Input size="large" placeholder="e.g. Pixel 9" />
-            </Form.Item>
-            <Form.Item label="Device type" name="deviceType">
-              <Input size="large" placeholder="Mobile App or Browser" />
-            </Form.Item>
-            <Form.Item label="Browser or app" name="browser">
-              <Input size="large" placeholder="e.g. Chrome or SecureBank App" />
-            </Form.Item>
-            <Form.Item label="Location" name="location" style={{ marginBottom: 24 }}>
-              <Input size="large" placeholder="e.g. Kandy, LK" />
-            </Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              size="large"
-              icon={<PlusOutlined />}
-              disabled={!hasDeviceCapacity}
-              loading={submitting && deviceActionId === 'link-device'}
-              style={{ height: 52, fontWeight: 600 }}
-            >
-              Link device
-            </Button>
-          </Form>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 10,
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: token.colorTextTertiary,
+            }}
+          >
+            Linked devices
+          </Text>
+          <Flex vertical gap={12}>
+            {linkedDevices.map((device) => (
+              <DeviceRow
+                key={device.id}
+                device={device}
+                busy={submitting && deviceActionId === device.id}
+                disabled={Boolean(profileLoadError)}
+                onVerify={handleVerifyDevice}
+                onRevoke={handleRevokeDevice}
+              />
+            ))}
+          </Flex>
         </div>
+      </div>
+    );
+  }
+
+  if (activePanel === 'password') {
+    return renderPanelShell(
+      'Change password',
+      <div
+        style={{
+          background: token.colorBgContainer,
+          borderRadius: 20,
+          border: `1px solid ${token.colorBorder}`,
+          padding: 24,
+        }}
+      >
+        <Text style={{ display: 'block', marginBottom: 8, fontSize: 15, fontWeight: 600 }}>
+          Registered email
+        </Text>
+        <Text style={{ display: 'block', marginBottom: 18, color: token.colorTextSecondary }}>
+          {profile.email}
+        </Text>
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 24,
+            fontSize: 14,
+            lineHeight: 1.6,
+            color: token.colorTextSecondary,
+          }}
+        >
+          For your protection, password changes use our secure recovery flow. We will issue a reset
+          link to your registered email, and you will confirm the new password with your 6-digit
+          authenticator code.
+        </Text>
+        <Button
+          type="primary"
+          block
+          size="large"
+          disabled={Boolean(profileLoadError)}
+          loading={passwordResetSubmitting}
+          onClick={handleChangePasswordRequest}
+          style={{ height: 52, fontWeight: 600 }}
+        >
+          Continue
+        </Button>
       </div>
     );
   }
@@ -792,9 +1045,38 @@ const Profile: React.FC = () => {
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       {contextHolder}
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
+        {profileLoadError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#FFF7E6',
+              border: '1px solid #FFD591',
+            }}
+          >
+            <Flex vertical gap={10}>
+              <Text style={{ color: '#AD6800', fontWeight: 500 }}>
+                {sessionExpired
+                  ? 'Your session has expired. Please sign in again to continue secure changes.'
+                  : `${profileLoadError} Saving is disabled until \`user-service\` is running.`}
+              </Text>
+              {sessionExpired && (
+                <Button
+                  type="primary"
+                  onClick={handleReauthenticate}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Sign in again
+                </Button>
+              )}
+            </Flex>
+          </div>
+        )}
         <Flex align="center" gap={16}>
           <Avatar
             size={64}
+            src={profilePhoto ?? undefined}
             style={{
               background: TEAL_TINT,
               color: token.colorPrimary,
@@ -805,7 +1087,7 @@ const Profile: React.FC = () => {
             }}
             onClick={() => setPanel('personal')}
           >
-            {getInitials(profile.fullName)}
+            {!profilePhoto ? getInitials(profile.fullName) : null}
           </Avatar>
           <div>
             <Title
@@ -904,32 +1186,6 @@ const Profile: React.FC = () => {
             </div>
           </div>
         ))}
-
-        <Text
-          style={{
-            display: 'block',
-            marginBottom: 10,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: 0.4,
-            textTransform: 'uppercase',
-            color: token.colorTextTertiary,
-          }}
-        >
-          Account controls
-        </Text>
-        <Button
-          block
-          danger={!profile.frozen}
-          type={profile.frozen ? 'primary' : 'default'}
-          size="large"
-          icon={profile.frozen ? <EditOutlined /> : <DeleteOutlined />}
-          loading={submitting && !otpState}
-          onClick={handleFreezeToggle}
-          style={{ height: 52, marginBottom: 16, fontWeight: 600 }}
-        >
-          {profile.frozen ? 'Reactivate account' : 'Freeze account instantly'}
-        </Button>
 
         <Text
           style={{

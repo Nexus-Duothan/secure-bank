@@ -1,6 +1,7 @@
 package com.securebank.auth.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -163,7 +164,8 @@ class AuthControllerTest {
       eq("+94 77 123 4567"),
       eq("Test Customer"),
       contains("127."),
-      eq("Unknown Device")
+      eq("Unknown Device"),
+      any()
     );
   }
 

@@ -54,12 +54,12 @@ export const DEMO_PROFILE: UserProfile = {
     },
     {
       id: 'device-demo-003',
-      deviceName: 'SecureBank iOS',
-      deviceType: 'Mobile App',
-      browser: 'SecureBank App',
-      location: 'Colombo, LK',
-      trusted: true,
-      lastVerifiedAt: '2026-07-28T09:10:00',
+      deviceName: 'Pixel 9',
+      deviceType: 'SecureBank App',
+      browser: '',
+      location: 'Kandy, LK',
+      trusted: false,
+      lastVerifiedAt: '',
     },
   ],
 };

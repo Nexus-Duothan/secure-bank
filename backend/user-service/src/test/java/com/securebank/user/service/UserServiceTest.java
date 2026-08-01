@@ -25,6 +25,7 @@ import com.securebank.user.repository.UserDeviceRepository;
 import com.securebank.user.repository.UserProfileRepository;
 import com.securebank.user.security.AccessDeniedException;
 import com.securebank.user.security.CallerIdentity;
+import com.securebank.user.service.notification.UserSecurityAlertService;
 import jakarta.persistence.EntityNotFoundException;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,6 +60,9 @@ class UserServiceTest {
   @Mock
   private PendingUserChangeRepository pendingUserChangeRepository;
 
+  @Mock
+  private UserSecurityAlertService userSecurityAlertService;
+
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final PasswordEncoder otpEncoder = new BCryptPasswordEncoder();
 
@@ -78,7 +82,8 @@ class UserServiceTest {
       pendingUserChangeRepository,
       objectMapper,
       otpEncoder,
-      properties
+      properties,
+      userSecurityAlertService
     );
   }
 

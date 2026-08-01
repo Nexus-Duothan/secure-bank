@@ -147,7 +147,7 @@ Ports:
 Quick start on Windows PowerShell:
 
 ```powershell
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+cd <path-to-clone>\secure-bank
 docker start securebank-postgres
 mvn -pl backend/auth-service spring-boot:run
 ```
@@ -155,7 +155,7 @@ mvn -pl backend/auth-service spring-boot:run
 Open another terminal for each service:
 
 ```powershell
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+cd <path-to-clone>\secure-bank
 mvn -pl backend/totp-service spring-boot:run
 mvn -pl backend/user-service spring-boot:run
 mvn -pl backend/accounts-service spring-boot:run
@@ -169,24 +169,24 @@ mvn -pl backend/api-gateway spring-boot:run
 Frontend:
 
 ```powershell
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank\frontend\web-service
+cd <path-to-clone>\secure-bank\frontend\web-service
 npm run dev
 ```
 
 Or use the helper script:
 
 ```powershell
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+cd <path-to-clone>\secure-bank
 .\scripts\start-dev.ps1
 ```
 
 Helpful dev commands:
 
 ```powershell
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank\frontend\web-service
+cd <path-to-clone>\secure-bank\frontend\web-service
 npm test
 
-cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+cd <path-to-clone>\secure-bank
 npx lint-staged
 ```
 

@@ -117,7 +117,8 @@ public class AuthService {
       user.getPhoneNumber(),
       user.getFullName(),
       ipAddress,
-      parseDeviceInfo(userAgent)
+      parseDeviceInfo(userAgent),
+      Instant.now()
     );
     return response;
   }
@@ -224,6 +225,13 @@ public class AuthService {
     List<UserSession> activeSessions = sessionRepository.findByUserIdAndRevokedFalse(user.getId());
     activeSessions.forEach(session -> session.setRevoked(true));
     sessionRepository.saveAll(activeSessions);
+
+    loginSmsAlertService.sendPasswordChangedAlert(
+      user.getPhoneNumber(),
+      user.getEmail(),
+      user.getFullName(),
+      Instant.now()
+    );
   }
 
   @Transactional(readOnly = true)
