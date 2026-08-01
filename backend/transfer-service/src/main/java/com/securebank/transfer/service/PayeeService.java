@@ -81,6 +81,8 @@ public class PayeeService {
         .build()
     );
 
+    payeeAlertService.sendOtpChallenge(caller.userId(), "ADD_PAYEE", code, saved.getExpiresAt());
+
     return new PayeeChallengeResponse(
       saved.getId(),
       saved.getExpiresAt(),
