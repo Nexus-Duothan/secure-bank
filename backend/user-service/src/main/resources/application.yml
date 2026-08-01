@@ -5,9 +5,28 @@ spring:
   application:
     name: user-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/securebank
-    username: securebank
-    password: securebank_secret_pass
+    url: ${SECUREBANK_DB_URL:jdbc:postgresql://localhost:5432/securebank}
+    username: ${SECUREBANK_DB_USER:securebank}
+    password: ${SECUREBANK_DB_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
       ddl-auto: update
+    open-in-view: false
+
+securebank:
+  user:
+    seed-demo-data: true
+    cors:
+      allowed-origins:
+        - http://localhost:3000
+        - http://localhost:5173
+    otp:
+      ttl: PT5M
+      max-attempts: 5
+      # Local prototype only: echoes the generated code back in the challenge response so the
+      # web UI can be demoed without the notification-service. MUST be false outside local dev.
+      expose-code: true
+    security:
+      # Until the API Gateway issues verified JWTs, requests without an X-User-Id header are
+      # resolved to the seeded demo customer. MUST be false outside local dev (NFR-S3).
+      allow-unauthenticated-demo-caller: true

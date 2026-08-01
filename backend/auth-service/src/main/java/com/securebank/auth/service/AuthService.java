@@ -10,6 +10,7 @@ import com.securebank.auth.repository.PasswordResetTokenRepository;
 import com.securebank.auth.repository.UserCredentialRepository;
 import com.securebank.auth.repository.UserSessionRepository;
 import com.securebank.auth.security.JwtTokenProvider;
+import com.securebank.auth.service.notification.LoginSmsAlertService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +28,7 @@ public class AuthService {
   private final PasswordResetTokenRepository passwordResetTokenRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider tokenProvider;
+  private final LoginSmsAlertService loginSmsAlertService;
 
   @Transactional
   public RegisterResponse register(RegisterRequest request) {
@@ -45,6 +47,7 @@ public class AuthService {
       .passwordHash(passwordEncoder.encode(request.getPassword()))
       .nationalIdOrPassport(request.getNationalIdOrPassport())
       .fullName(request.getFullName())
+      .phoneNumber(request.getPhoneNumber())
       .role(role)
       .status(UserStatus.PENDING_KYC)
       .mfaEnabled(true)
@@ -109,7 +112,14 @@ public class AuthService {
       throw new IllegalArgumentException("Invalid 6-digit TOTP code");
     }
 
-    return createSessionAndGenerateTokens(user, ipAddress, userAgent);
+    AuthTokenResponse response = createSessionAndGenerateTokens(user, ipAddress, userAgent);
+    loginSmsAlertService.sendSuccessfulLoginAlert(
+      user.getPhoneNumber(),
+      user.getFullName(),
+      ipAddress,
+      parseDeviceInfo(userAgent)
+    );
+    return response;
   }
 
   @Transactional

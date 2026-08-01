@@ -44,3 +44,26 @@ The dev server starts at `http://localhost:3000` with API calls proxied to `http
 npm run build
 npm run lint
 ```
+
+---
+
+## 🔌 Talking to the Backend
+
+The client never calls a service port directly — it requests relative `/api/...` paths so traffic goes through the API Gateway, the platform's single hardened entry point (blueprint §2.2). Copy `.env.example` to `.env.local` to change where that lands:
+
+| Variable                | Default                 | Purpose                                        |
+| :---------------------- | :---------------------- | :--------------------------------------------- |
+| `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Where the dev server forwards `/api`           |
+| `VITE_USER_API_BASE`    | `/api/v1/users`         | Absolute override to bypass the proxy entirely |
+
+To work against the user-service alone, without the gateway running:
+
+```bash
+VITE_API_PROXY_TARGET=http://localhost:8083 npm run dev
+```
+
+If the backend is unreachable the app falls back to a local preview of the demo profile and says so in a banner — changes made in that mode are **not** saved. Confirm them with `492000`.
+
+While the user-service runs with `securebank.user.otp.expose-code` enabled it returns the generated code in the challenge response, and the OTP screen displays it. With that disabled the code arrives through the Notification Service instead and the screen shows no hint.
+
+The **Admin / RBAC** screen stands in for a signed-in staff session: it loads the directory with an administrator role header and acts as the seeded administrator, so the service's own authorisation rules (officers cannot grant roles, nobody may re-grade themselves) are exercised for real and their rejections surface in the UI.

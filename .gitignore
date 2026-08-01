@@ -13,6 +13,7 @@ Thumbs.db
 .project
 
 # Java / Maven
+.m2/
 target/
 *.class
 *.jar
@@ -28,6 +29,7 @@ yarn-error.log*
 pnpm-debug.log*
 dist/
 build/
+*.tsbuildinfo
 .env.local
 .env.*.local
 
