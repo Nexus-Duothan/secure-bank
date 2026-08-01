@@ -1,29 +1,35 @@
-use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
+mod anomaly;
+mod api;
+mod journal;
+mod models;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuditJournalEntry {
-    pub transaction_id: String,
-    pub service_name: String,
-    pub payload_hash: String,
-    pub timestamp: u64,
-}
+use api::{create_router, AppState};
+use journal::JournalStore;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
     tracing::info!("Initializing SecureBank Audit & Recovery Service (Rust)...");
 
-    let entry = AuditJournalEntry {
-        transaction_id: "tx-init-0001".to_string(),
-        service_name: "audit-recovery-service".to_string(),
-        payload_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-            .to_string(),
-        timestamp: SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    };
+    let journal_path = PathBuf::from("data/audit_journal.jsonl");
+    let journal = JournalStore::new(journal_path);
 
-    tracing::info!("Audit log journal initialized cleanly: {:?}", entry);
+    let state = AppState { journal };
+    let app = create_router(state);
+
+    let host = std::env::var("BIND_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("PORT")
+        .unwrap_or_else(|_| "8089".to_string())
+        .parse()
+        .unwrap_or(8089);
+
+    let addr: SocketAddr = format!("{}:{}", host, port)
+        .parse()
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], port)));
+    tracing::info!("Audit & Recovery Service listening on http://{}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
