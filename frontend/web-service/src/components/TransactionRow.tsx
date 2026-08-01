@@ -54,6 +54,8 @@ const TransactionRow: React.FC<TransactionRowProps> = ({
       style={{
         padding: '16px 20px',
         borderBottom: showDivider ? `1px solid ${token.colorBorder}` : 'none',
+        borderLeft: flagged ? `3px solid ${token.colorWarning}` : '3px solid transparent',
+        background: flagged ? token.colorWarningBg : 'transparent',
       }}
     >
       <Flex align="center" justify="space-between">
