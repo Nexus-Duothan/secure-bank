@@ -75,7 +75,7 @@ public class CallerIdentityArgumentResolver implements HandlerMethodArgumentReso
     UserProfile demoUser = userProfileRepository
       .findFirstByOrderByCreatedAtAsc()
       .orElseThrow(() -> new AccessDeniedException("No demo user is available to impersonate"));
-    return new CallerIdentity(demoUser.getId(), parseRole(rawRole, demoUser.getRole()));
+    return new CallerIdentity(demoUser.getId(), demoUser.getRole());
   }
 
   private Role parseRole(String rawRole, Role fallback) {
