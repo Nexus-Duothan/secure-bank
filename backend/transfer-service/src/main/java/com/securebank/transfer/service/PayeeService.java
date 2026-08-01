@@ -52,6 +52,13 @@ public class PayeeService {
       .toList();
   }
 
+  /**
+   * Known gap: the OTP code generated here is never dispatched to the caller outside of
+   * {@code securebank.transfer.otp.expose-code=true} (demo mode). notification-service has no
+   * send/dispatch capability yet (read-only endpoints only, no Kafka consumer implemented), so
+   * there is nowhere real to deliver it to. This flow isn't completable end-to-end in a real
+   * deployment until that lands; tracked as a follow-up, not an oversight.
+   */
   @Transactional
   public PayeeChallengeResponse requestAddPayee(CallerIdentity caller, AddPayeeRequest request) {
     if (

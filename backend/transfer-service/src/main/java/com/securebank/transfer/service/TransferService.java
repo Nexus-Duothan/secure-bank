@@ -17,6 +17,7 @@ import jakarta.persistence.EntityNotFoundException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,9 @@ public class TransferService {
   private static final String DEFAULT_CURRENCY = "LKR";
   // Internal A2A transfers are fee-free and instant, matching what the frontend already displays.
   private static final BigDecimal FEE = BigDecimal.ZERO;
+  // Explicit zone so the daily-limit bucket boundary is Sri Lanka midnight regardless of the
+  // JVM's default zone, matching ScheduledTransferExecutionService.SCHEDULE_ZONE.
+  private static final ZoneId DAILY_USAGE_ZONE = ZoneId.of("Asia/Colombo");
 
   private final TransferRepository transferRepository;
   private final TransferDailyUsageRepository dailyUsageRepository;
@@ -118,7 +122,7 @@ public class TransferService {
       return fail(transfer, "Insufficient balance at confirmation time");
     }
 
-    LocalDate today = LocalDate.now();
+    LocalDate today = LocalDate.now(DAILY_USAGE_ZONE);
     TransferDailyUsage usage = dailyUsageRepository
       .findForUpdate(transfer.getFromAccountId(), today)
       .orElseGet(() ->
@@ -180,7 +184,7 @@ public class TransferService {
   /** Non-locking peek used only to fail fast at quote time; {@link #confirm} re-checks under lock. */
   private BigDecimal peekDailyUsage(String accountId) {
     return dailyUsageRepository
-      .findById(new TransferDailyUsage.Key(accountId, LocalDate.now()))
+      .findById(new TransferDailyUsage.Key(accountId, LocalDate.now(DAILY_USAGE_ZONE)))
       .map(TransferDailyUsage::getTotalAmount)
       .orElse(BigDecimal.ZERO);
   }

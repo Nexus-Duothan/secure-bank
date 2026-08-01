@@ -15,10 +15,12 @@ CREATE TABLE IF NOT EXISTS transfers (
 );
 
 -- A retried quote with the same caller-supplied key must resolve to the same transfer (NFR-R2)
--- rather than creating a duplicate.
+-- rather than creating a duplicate. No WHERE predicate is needed to exempt NULL keys: both
+-- Postgres and H2 already treat NULL as distinct from NULL in a unique index, so callers who
+-- skip the idempotency key are never deduped against each other. A partial index here also
+-- isn't portable to H2's PostgreSQL-compatibility mode, which rejects the WHERE clause syntax.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_transfers_user_idempotency_key
-  ON transfers(initiated_by_user_id, idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
+  ON transfers(initiated_by_user_id, idempotency_key);
 
 CREATE INDEX IF NOT EXISTS idx_transfers_from_account_id ON transfers(from_account_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_initiated_by_user_id ON transfers(initiated_by_user_id);

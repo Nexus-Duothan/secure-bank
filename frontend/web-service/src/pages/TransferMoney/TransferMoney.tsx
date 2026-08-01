@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Typography, theme } from 'antd';
 import accountsService, { type Account } from '../../api/accountsService';
@@ -35,6 +35,9 @@ const TransferMoney: React.FC = () => {
   const [quoting, setQuoting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Stable per-attempt key so a network retry of the same quote request dedupes on the backend
+  // instead of creating a duplicate PENDING_CONFIRMATION row; reset whenever the user edits the form.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,13 +57,19 @@ const TransferMoney: React.FC = () => {
   const handleQuote = async (values: TransferFormValues) => {
     setQuoting(true);
     setError(null);
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+    }
     try {
-      const response = await transferService.quoteTransfer({
-        fromAccountId: fromAccount.id,
-        toAccount: values.to,
-        amount: values.amount,
-        note: values.note,
-      });
+      const response = await transferService.quoteTransfer(
+        {
+          fromAccountId: fromAccount.id,
+          toAccount: values.to,
+          amount: values.amount,
+          note: values.note,
+        },
+        idempotencyKeyRef.current
+      );
       setQuote(response);
       setStep('review');
     } catch (err) {
@@ -95,6 +104,7 @@ const TransferMoney: React.FC = () => {
     setStep('form');
     setQuote(null);
     setError(null);
+    idempotencyKeyRef.current = null;
   };
 
   return (

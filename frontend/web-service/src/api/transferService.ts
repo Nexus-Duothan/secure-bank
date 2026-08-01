@@ -28,8 +28,12 @@ export interface TransferResponse {
 
 export const transferService = {
   client,
-  quoteTransfer: (payload: TransferQuotePayload) =>
-    client.post<TransferResponse>('/quote', payload).then((response) => response.data),
+  quoteTransfer: (payload: TransferQuotePayload, idempotencyKey?: string) =>
+    client
+      .post<TransferResponse>('/quote', payload, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+      })
+      .then((response) => response.data),
   confirmTransfer: (id: string) =>
     client.post<TransferResponse>(`/${id}/confirm`).then((response) => response.data),
   getTransfer: (id: string) =>
