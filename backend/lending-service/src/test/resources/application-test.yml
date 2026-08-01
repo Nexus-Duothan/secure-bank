@@ -1,0 +1,51 @@
+server:
+  port: 0
+
+spring:
+  application:
+    name: lending-service-test
+  datasource:
+    url: jdbc:h2:mem:lendingtest;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_lending
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        max.block.ms: 1000
+
+jwt:
+  secret: dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=
+  access-token-expiration-seconds: 300
+
+securebank:
+  lending:
+    accounts-client:
+      base-url: http://localhost:8084
+    loan:
+      min-amount: 10000
+      max-amount: 5000000
+      min-term-months: 6
+      max-term-months: 60
+      default-annual-interest-rate: 11.5
+    repayment:
+      max-attempts: 3
+      retry-interval: PT24H
+      reminder-lead-time: PT72H
+
+lending:
+  kafka:
+    disbursed-topic: loans.disbursed.v1
+    reminder-topic: loans.repayment-reminder.v1
+    overdue-topic: loans.repayment-overdue.v1

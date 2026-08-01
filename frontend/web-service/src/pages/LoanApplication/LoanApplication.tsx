@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -13,8 +13,10 @@ import {
   theme,
 } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
-import type { AxiosError } from 'axios';
+import accountsService, { type Account } from '../../api/accountsService';
 import lendingService from '../../api/lendingService';
+import { getApiErrorMessage } from '../../api/apiError';
+import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
@@ -54,21 +56,41 @@ const LoanApplication: React.FC = () => {
   const [form] = Form.useForm<LoanAmountFormValues>();
   const [currentStep, setCurrentStep] = useState(0);
   const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [linkedAccount, setLinkedAccount] = useState<Account>(DEMO_PRIMARY_ACCOUNT);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    accountsService
+      .getPrimaryAccount()
+      .then((data) => {
+        if (!cancelled) setLinkedAccount(data);
+      })
+      .catch(() => {
+        // Endpoint not available yet - fall back to the placeholder shown above.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleFinishAmountStep = async (values: LoanAmountFormValues) => {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await lendingService.applyForLoan(values);
+      const response = await lendingService.applyForLoan({
+        ...values,
+        linkedAccountId: linkedAccount.id,
+      });
       setApplicationId(response.id);
       setCurrentStep(1);
     } catch (err) {
-      const axiosError = err as AxiosError<{ message?: string }>;
       setError(
-        axiosError.response?.data?.message ??
+        getApiErrorMessage(
+          err,
           'Unable to start your loan application right now. Please try again.'
+        )
       );
     } finally {
       setSubmitting(false);

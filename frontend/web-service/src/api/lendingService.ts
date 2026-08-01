@@ -58,19 +58,6 @@ export interface LoanInstallment {
   paidAt?: string;
 }
 
-export interface PendingLoanApplication {
-  id: string;
-  applicantName: string;
-  applicantId: string;
-  purpose: string;
-  currency: string;
-  amount: number;
-  termMonths: number;
-  estimatedRate: number;
-  status: string;
-  submittedAt: string;
-}
-
 export const lendingService = {
   client,
   applyForLoan: (payload: LoanApplicationPayload) =>
@@ -81,10 +68,6 @@ export const lendingService = {
     client.get<LoanApplicationResponse[]>('/applications').then((response) => response.data),
   getLoanDetails: (id: string) =>
     client.get<LoanDetail>(`/${id}`).then((response) => response.data),
-  // Officer-side view of the loan queue (FR-22/FR-23). Decisions happen in the
-  // bank's lending system, so there is no review call here.
-  getPendingApplications: () =>
-    client.get<PendingLoanApplication[]>('/officer/pending').then((response) => response.data),
   listLoans: () => client.get<LoanDetail[]>('').then((response) => response.data),
   getInstallments: (id: string) =>
     client.get<LoanInstallment[]>(`/${id}/installments`).then((response) => response.data),

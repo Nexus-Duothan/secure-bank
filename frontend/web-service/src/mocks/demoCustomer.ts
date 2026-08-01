@@ -424,15 +424,21 @@ export const DEMO_NOTIFICATIONS: Notification[] = [
 
 export const DEMO_LOAN_DETAIL: LoanDetail = {
   id: 'loan-demo-001',
-  name: 'Home Improvement Loan',
+  applicationId: 'app-demo-001',
+  purpose: 'home-improvement',
+  principal: 500000.0,
+  annualInterestRate: 11.5,
+  termMonths: 24,
   currency: 'LKR',
+  linkedAccountId: DEMO_PRIMARY_ACCOUNT.id,
+  status: 'ACTIVE',
+  autopayEnabled: true,
   remainingBalance: 318420.0,
   installmentsPaid: 9,
   installmentsTotal: 24,
-  nextPaymentDueDate: '05 Aug 2026',
-  nextPaymentAmount: 24350.0,
-  autoPayEnabled: true,
-  autoPayAccountName: 'Everyday Current',
+  nextInstallmentDueDate: '2026-08-05T00:00:00Z',
+  nextInstallmentAmount: 24350.0,
+  disbursedAt: '2025-11-05T00:00:00Z',
 };
 
 export const buildDemoAccountDetail = (id: string): AccountDetail =>
