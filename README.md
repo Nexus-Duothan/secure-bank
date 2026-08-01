@@ -194,6 +194,8 @@ npx lint-staged
 
 Demo login:
 
-- Username: `kaveesha.demo`
-- Password: `SecureBank@123`
+- Customer: `kaveesha.demo` / `SecureBank@123`
+- Merchant: `sahan.merchant` / `SecureBank@123`
+- Bank officer: `anjali.officer` / `SecureBankAdmin@123`
+- Admin: `nimali.admin` / `SecureBankAdmin@123`
 - OTP: any 6 digits, for example `123456`

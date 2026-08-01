@@ -81,3 +81,10 @@ mvn spring-boot:run
 ```
 
 The service will start on port `8081`.
+
+Local development accounts are expected to exist in the database already:
+
+- Customer: `kaveesha.demo` / `SecureBank@123`
+- Merchant: `sahan.merchant` / `SecureBank@123`
+- Bank officer: `anjali.officer` / `SecureBankAdmin@123`
+- Admin: `nimali.admin` / `SecureBankAdmin@123`
