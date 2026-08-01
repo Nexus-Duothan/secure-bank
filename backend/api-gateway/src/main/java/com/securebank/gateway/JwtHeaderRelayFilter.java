@@ -1,11 +1,13 @@
 package com.securebank.gateway;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import java.util.List;
+import java.util.Map;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -26,6 +28,7 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
   private static final String USER_ID_HEADER = "X-User-Id";
   private static final String USER_ROLE_HEADER = "X-User-Role";
   private final AntPathMatcher pathMatcher = new AntPathMatcher();
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
   private final SecretKey key;
 
@@ -33,13 +36,7 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
   private List<String> publicPaths;
 
   public JwtHeaderRelayFilter(@Value("${jwt.secret}") String secret) {
-    byte[] keyBytes;
-    try {
-      keyBytes = Decoders.BASE64.decode(secret);
-    } catch (Exception e) {
-      keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    }
-    this.key = Keys.hmacShaKeyFor(keyBytes);
+    this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
   }
 
   @Override
@@ -73,7 +70,7 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
     try {
       Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
       String tokenType = claims.get("type", String.class);
-      if (tokenType != null && !"ACCESS".equals(tokenType)) {
+      if (!"ACCESS".equals(tokenType)) {
         return unauthorized(exchange, "Only access tokens can call downstream services");
       }
 
@@ -106,11 +103,27 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
   private Mono<Void> unauthorized(ServerWebExchange exchange, String message) {
     exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
     exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-    byte[] body = (
-      "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"" +
-      message +
-      "\"}"
-    ).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+    Map<String, Object> errorPayload = Map.of(
+      "status",
+      401,
+      "error",
+      "Unauthorized",
+      "message",
+      message,
+      "path",
+      exchange.getRequest().getURI().getPath()
+    );
+
+    byte[] body;
+    try {
+      body = objectMapper.writeValueAsBytes(errorPayload);
+    } catch (Exception e) {
+      body = "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Unauthorized\"}".getBytes(
+        java.nio.charset.StandardCharsets.UTF_8
+      );
+    }
+
     return exchange
       .getResponse()
       .writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body)));

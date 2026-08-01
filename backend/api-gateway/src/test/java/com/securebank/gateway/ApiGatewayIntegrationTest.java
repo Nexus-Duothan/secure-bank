@@ -23,15 +23,32 @@ class ApiGatewayIntegrationTest {
   private String secret =
     "dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=";
   private String validAccessToken;
+  private String tokenWithoutType;
+  private String refreshToken;
   private String invalidToken;
 
   @BeforeEach
   void setUp() {
-    byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+    byte[] keyBytes = io.jsonwebtoken.io.Decoders.BASE64.decode(secret);
     validAccessToken = Jwts.builder()
       .subject(UUID.randomUUID().toString())
       .claim("role", "CUSTOMER")
       .claim("type", "ACCESS")
+      .expiration(new Date(System.currentTimeMillis() + 3600000))
+      .signWith(Keys.hmacShaKeyFor(keyBytes))
+      .compact();
+
+    tokenWithoutType = Jwts.builder()
+      .subject(UUID.randomUUID().toString())
+      .claim("role", "CUSTOMER")
+      .expiration(new Date(System.currentTimeMillis() + 3600000))
+      .signWith(Keys.hmacShaKeyFor(keyBytes))
+      .compact();
+
+    refreshToken = Jwts.builder()
+      .subject(UUID.randomUUID().toString())
+      .claim("role", "CUSTOMER")
+      .claim("type", "REFRESH")
       .expiration(new Date(System.currentTimeMillis() + 3600000))
       .signWith(Keys.hmacShaKeyFor(keyBytes))
       .compact();
@@ -65,6 +82,40 @@ class ApiGatewayIntegrationTest {
       .get()
       .uri("/api/v1/payments/123")
       .header(HttpHeaders.AUTHORIZATION, "Bearer " + invalidToken)
+      .exchange()
+      .expectStatus()
+      .isUnauthorized();
+  }
+
+  @Test
+  void protectedEndpoint_WithValidAccessToken_PassesAuthFilter() {
+    // Valid token passes filter and attempts downstream routing (returning 503 or 500 error instead of 401)
+    webTestClient
+      .get()
+      .uri("/api/v1/payments/123")
+      .header(HttpHeaders.AUTHORIZATION, "Bearer " + validAccessToken)
+      .exchange()
+      .expectStatus()
+      .value(status -> org.junit.jupiter.api.Assertions.assertNotEquals(401, status));
+  }
+
+  @Test
+  void protectedEndpoint_WithTokenMissingTypeClaim_Returns401Unauthorized() {
+    webTestClient
+      .get()
+      .uri("/api/v1/payments/123")
+      .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenWithoutType)
+      .exchange()
+      .expectStatus()
+      .isUnauthorized();
+  }
+
+  @Test
+  void protectedEndpoint_WithRefreshToken_Returns401Unauthorized() {
+    webTestClient
+      .get()
+      .uri("/api/v1/payments/123")
+      .header(HttpHeaders.AUTHORIZATION, "Bearer " + refreshToken)
       .exchange()
       .expectStatus()
       .isUnauthorized();

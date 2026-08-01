@@ -1,6 +1,7 @@
 package com.securebank.gateway.exception;
 
-import java.nio.charset.StandardCharsets;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
@@ -18,6 +19,7 @@ import reactor.core.publisher.Mono;
 public class GatewayErrorWebExceptionHandler implements ErrorWebExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GatewayErrorWebExceptionHandler.class);
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
   @Override
   public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
@@ -38,15 +40,27 @@ public class GatewayErrorWebExceptionHandler implements ErrorWebExceptionHandler
     exchange.getResponse().setStatusCode(status);
     exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-    String jsonPayload = String.format(
-      "{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\",\"path\":\"%s\"}",
+    Map<String, Object> errorBody = Map.of(
+      "status",
       status.value(),
+      "error",
       status.getReasonPhrase(),
-      message.replace("\"", "\\\""),
+      "message",
+      message,
+      "path",
       exchange.getRequest().getURI().getPath()
     );
 
-    byte[] bytes = jsonPayload.getBytes(StandardCharsets.UTF_8);
+    byte[] bytes;
+    try {
+      bytes = objectMapper.writeValueAsBytes(errorBody);
+    } catch (Exception serializationException) {
+      bytes =
+        "{\"status\":500,\"error\":\"Internal Server Error\",\"message\":\"An unexpected error occurred at Gateway\"}".getBytes(
+          java.nio.charset.StandardCharsets.UTF_8
+        );
+    }
+
     DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
     return exchange.getResponse().writeWith(Mono.just(buffer));
   }
