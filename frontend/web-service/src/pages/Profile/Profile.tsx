@@ -4,6 +4,7 @@ import { Avatar, Flex, Typography, theme } from 'antd';
 import { LogoutOutlined, RightOutlined } from '@ant-design/icons';
 import authService from '../../api/authService';
 import userService, { type UserProfile } from '../../api/userService';
+import accountsService, { type Account } from '../../api/accountsService';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
 
@@ -22,6 +23,17 @@ const MOCK_PROFILE: UserProfile = {
   lastVerifiedSession: 'Today 14:22',
   trustedDevicesCount: 2,
   deviceVerified: true,
+};
+
+const MOCK_ACCOUNT: Account = {
+  id: 'acc-001',
+  nickname: 'Current Account',
+  accountType: 'CURRENT',
+  lastFourDigits: '4821',
+  balance: 48231.76,
+  currency: 'USD',
+  monthlyChangePercent: 2.4,
+  verifiedLabel: '2m ago',
 };
 
 const getInitials = (name: string) =>
@@ -91,6 +103,7 @@ const Profile: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
+  const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -99,6 +112,14 @@ const Profile: React.FC = () => {
       .getProfile()
       .then((data) => {
         if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        // Endpoint not available yet — fall back to the placeholder shown above.
+      });
+    accountsService
+      .getPrimaryAccount()
+      .then((data) => {
+        if (!cancelled) setAccount(data);
       })
       .catch(() => {
         // Endpoint not available yet — fall back to the placeholder shown above.
@@ -286,7 +307,7 @@ const Profile: React.FC = () => {
         </Flex>
       </div>
 
-      <BottomNav />
+      <BottomNav accountsPath={`/accounts/${account.id}`} />
     </div>
   );
 };
