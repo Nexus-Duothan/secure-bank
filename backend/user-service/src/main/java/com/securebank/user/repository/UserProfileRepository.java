@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> {
   Optional<UserProfile> findFirstByOrderByCreatedAtAsc();
+  Optional<UserProfile> findByEmailIgnoreCase(String email);
 
   boolean existsByEmailIgnoreCaseAndIdNot(String email, UUID id);
 }

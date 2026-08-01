@@ -4,6 +4,7 @@ import { Flex, Typography, theme } from 'antd';
 import { LeftOutlined } from '@ant-design/icons';
 import auditService, { type AuditTransaction } from '../../api/auditService';
 import TransactionRow from '../../components/TransactionRow';
+import { DEMO_AUDIT_TRANSACTIONS } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
@@ -16,73 +17,12 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'flagged', label: 'Flagged' },
 ];
 
-const MOCK_TRANSACTIONS: AuditTransaction[] = [
-  {
-    id: 'txn-88214',
-    merchant: 'Keells Super',
-    category: 'Card payment',
-    location: 'Colombo 05',
-    amount: -8540.0,
-    currency: 'LKR',
-    timestamp: '2026-07-22T09:12:00',
-    dateGroupLabel: 'Today · 22 Jul 2026',
-    journalId: 'J-88214',
-    flagged: false,
-  },
-  {
-    id: 'txn-88209',
-    merchant: 'Ruwan Jayasuriya',
-    category: 'Incoming transfer',
-    location: '',
-    amount: 15000.0,
-    currency: 'LKR',
-    timestamp: '2026-07-22T07:40:00',
-    dateGroupLabel: 'Today · 22 Jul 2026',
-    journalId: 'J-88209',
-    flagged: false,
-  },
-  {
-    id: 'txn-88190',
-    merchant: 'Unknown merchant',
-    category: 'Card attempt',
-    location: 'Blocked location',
-    amount: -92000.0,
-    currency: 'LKR',
-    timestamp: '2026-07-21T21:05:00',
-    dateGroupLabel: 'Yesterday · 21 Jul 2026',
-    journalId: 'J-88190',
-    flagged: true,
-  },
-  {
-    id: 'txn-88171',
-    merchant: 'Dialog Mobile',
-    category: 'Bill payment',
-    location: '',
-    amount: -2150.0,
-    currency: 'LKR',
-    timestamp: '2026-07-21T14:22:00',
-    dateGroupLabel: 'Yesterday · 21 Jul 2026',
-    journalId: 'J-88171',
-    flagged: false,
-  },
-  {
-    id: 'txn-88164',
-    merchant: 'CEB Electricity',
-    category: 'Scheduled payment',
-    location: '',
-    amount: -6830.0,
-    currency: 'LKR',
-    timestamp: '2026-07-21T08:15:00',
-    dateGroupLabel: 'Yesterday · 21 Jul 2026',
-    journalId: 'J-88164',
-    flagged: false,
-  },
-];
+const MOCK_TRANSACTIONS: AuditTransaction[] = DEMO_AUDIT_TRANSACTIONS;
 
 const groupByDate = (transactions: AuditTransaction[]) => {
   const groups: { label: string; items: AuditTransaction[] }[] = [];
   transactions.forEach((txn) => {
-    const group = groups.find((g) => g.label === txn.dateGroupLabel);
+    const group = groups.find((item) => item.label === txn.dateGroupLabel);
     if (group) {
       group.items.push(txn);
     } else {
@@ -106,7 +46,7 @@ const TransactionHistory: React.FC = () => {
         if (!cancelled) setTransactions(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
     return () => {
       cancelled = true;
@@ -141,7 +81,7 @@ const TransactionHistory: React.FC = () => {
             className="font-display"
             style={{ margin: 0, color: token.colorText, fontWeight: 600 }}
           >
-            Transaction history
+            Previous activities
           </Title>
         </Flex>
 

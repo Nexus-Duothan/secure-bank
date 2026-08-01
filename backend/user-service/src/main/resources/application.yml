@@ -1,17 +1,23 @@
 server:
-  port: 8083
+  port: ${SERVER_PORT:8083}
 
 spring:
   application:
     name: user-service
   datasource:
-    url: ${SECUREBANK_DB_URL:jdbc:postgresql://localhost:5432/securebank}
-    username: ${SECUREBANK_DB_USER:securebank}
-    password: ${SECUREBANK_DB_PASSWORD:securebank_secret_pass}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/securebank}
+    username: ${SPRING_DATASOURCE_USERNAME:securebank}
+    password: ${SPRING_DATASOURCE_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: ${SPRING_JPA_SHOW_SQL:true}
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_user
+    baseline-on-migrate: true
 
 securebank:
   user:

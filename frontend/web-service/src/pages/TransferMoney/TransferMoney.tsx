@@ -4,19 +4,11 @@ import { Alert, Button, Card, Flex, Form, Input, InputNumber, Typography, theme 
 import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
 import transferService from '../../api/transferService';
+import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
-const MOCK_FROM_ACCOUNT: Account = {
-  id: 'acc-001',
-  nickname: 'Current Account',
-  accountType: 'CURRENT',
-  lastFourDigits: '0003',
-  balance: 428650.0,
-  currency: 'LKR',
-  monthlyChangePercent: 0,
-  verifiedLabel: 'now',
-};
+const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
 
 interface TransferFormValues {
   to: string;
@@ -44,7 +36,7 @@ const TransferMoney: React.FC = () => {
         if (!cancelled) setFromAccount(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
     return () => {
       cancelled = true;
@@ -116,7 +108,7 @@ const TransferMoney: React.FC = () => {
                   color: token.colorTextTertiary,
                 }}
               >
-                {fromAccount.nickname} · {fromAccount.currency}{' '}
+                {fromAccount.nickname} - {fromAccount.currency}{' '}
                 {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(
                   fromAccount.balance
                 )}
@@ -166,7 +158,7 @@ const TransferMoney: React.FC = () => {
         <Flex justify="space-between" align="center" style={{ margin: '20px 4px' }}>
           <Text style={{ color: token.colorTextSecondary, fontSize: 14 }}>Transfer fee</Text>
           <Text style={{ color: token.colorPrimary, fontSize: 14, fontWeight: 500 }}>
-            {fromAccount.currency} 0.00 · Instant
+            {fromAccount.currency} 0.00 - Instant
           </Text>
         </Flex>
 

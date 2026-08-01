@@ -19,11 +19,8 @@ import type { AxiosError } from 'axios';
 import { authService, type AccountType } from '../../api/authService';
 import AuthLayout from '../../components/AuthLayout';
 import TrustIndicator from '../../components/TrustIndicator';
-import {
-  PASSWORD_COMPLEXITY_MESSAGE,
-  PASSWORD_PATTERN,
-  PasswordStrengthMeter,
-} from '../../components/PasswordStrength';
+import { PasswordStrengthMeter } from '../../components/PasswordStrength';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_PATTERN } from '../../components/passwordRules';
 
 const { Text, Link } = Typography;
 

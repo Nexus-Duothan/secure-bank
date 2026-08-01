@@ -4,52 +4,13 @@ import notificationService, {
   type Notification,
   type NotificationType,
 } from '../../api/notificationService';
+import { DEMO_NOTIFICATIONS } from '../../mocks/demoCustomer';
 
 const { Text, Title, Link } = Typography;
 
 const SLATE = '#5B6B82';
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'ntf-001',
-    type: 'security',
-    title: 'New device sign-in verified',
-    description:
-      "Chrome on Windows · Colombo, LK. If this wasn't you, freeze your account immediately.",
-    categoryLabel: 'Security alert',
-    timestamp: '14:22',
-    groupLabel: 'Today',
-    read: false,
-  },
-  {
-    id: 'ntf-002',
-    type: 'security',
-    title: 'Card attempt blocked',
-    description: 'LKR 92,000.00 attempt from an unrecognised location was held for your review.',
-    categoryLabel: 'Security alert',
-    timestamp: '09:47',
-    groupLabel: 'Today',
-    read: false,
-  },
-  {
-    id: 'ntf-003',
-    type: 'info',
-    title: 'Loan installment received',
-    description: 'Your July installment of LKR 24,350.00 was collected automatically.',
-    timestamp: '05 Jul · 08:00',
-    groupLabel: 'Earlier',
-    read: true,
-  },
-  {
-    id: 'ntf-004',
-    type: 'info',
-    title: 'Statement ready',
-    description: 'Your June statement for Everyday Current is ready to download.',
-    timestamp: '01 Jul · 06:12',
-    groupLabel: 'Earlier',
-    read: true,
-  },
-];
+const MOCK_NOTIFICATIONS: Notification[] = DEMO_NOTIFICATIONS;
 
 const accentColor = (type: NotificationType, token: ReturnType<typeof theme.useToken>['token']) => {
   switch (type) {
@@ -65,7 +26,7 @@ const accentColor = (type: NotificationType, token: ReturnType<typeof theme.useT
 const groupByLabel = (notifications: Notification[]) => {
   const groups: { label: string; items: Notification[] }[] = [];
   notifications.forEach((item) => {
-    const group = groups.find((g) => g.label === item.groupLabel);
+    const group = groups.find((entry) => entry.label === item.groupLabel);
     if (group) {
       group.items.push(item);
     } else {
@@ -87,7 +48,7 @@ const Notifications: React.FC = () => {
         if (!cancelled) setNotifications(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
     return () => {
       cancelled = true;
@@ -194,7 +155,7 @@ const Notifications: React.FC = () => {
                           <Text style={{ fontSize: 13, fontWeight: 600, color: accent }}>
                             {item.categoryLabel}
                           </Text>
-                          <Text style={{ fontSize: 13, color: token.colorTextTertiary }}>·</Text>
+                          <Text style={{ fontSize: 13, color: token.colorTextTertiary }}>-</Text>
                         </>
                       )}
                       <Text

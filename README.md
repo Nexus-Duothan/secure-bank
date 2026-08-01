@@ -29,8 +29,8 @@ secure-bank/
 │   └── notification-service             # Multi-Channel Alerts (Port 8088)
 ├── security/
 │   └── audit-recovery-service           # Rust Immutable Journaling & Recovery Engine
-└── frontend/
-    └── web-service                      # React 18 + Vite + Ant Design Web App (Port 3000)
+    └── frontend/
+        └── web-service                      # React 18 + Vite + Ant Design Web App (Port 5173)
 ```
 
 ---
@@ -91,7 +91,7 @@ npm install
 npm run dev
 ```
 
-The web application will be accessible at `http://localhost:3000`.
+The web application will be accessible at `http://localhost:5173`.
 
 ---
 
@@ -109,7 +109,7 @@ The web application will be accessible at `http://localhost:3000`.
 | **Lending**        | `backend/lending-service`         | Java (Spring Boot)          | `8087` | `http://localhost:8087/api/v1/loans`         |
 | **Notification**   | `backend/notification-service`    | Java (Spring Boot)          | `8088` | `http://localhost:8088/api/v1/notifications` |
 | **Audit Engine**   | `security/audit-recovery-service` | Rust                        | -      | Event Consumer / gRPC                        |
-| **Web Service**    | `frontend/web-service`            | React + Vite + Ant Design   | `3000` | `http://localhost:3000`                      |
+| **Web Service**    | `frontend/web-service`            | React + Vite + Ant Design   | `5173` | `http://localhost:5173`                      |
 
 ---
 
@@ -126,3 +126,74 @@ To run formatting checks manually across the monorepo:
 npm run format         # Auto-format all supported files
 npm run format:check   # Validate formatting without modifying
 ```
+
+## Local development
+
+Use the API Gateway as the single entry point in local development.
+
+Ports:
+
+- `5173` frontend
+- `8080` API Gateway
+- `8081` auth-service
+- `8082` totp-service
+- `8083` user-service
+- `8084` accounts-service
+- `8085` transfer-service
+- `8086` payments-service
+- `8087` lending-service
+- `8088` notification-service
+
+Quick start on Windows PowerShell:
+
+```powershell
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+docker start securebank-postgres
+mvn -pl backend/auth-service spring-boot:run
+```
+
+Open another terminal for each service:
+
+```powershell
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+mvn -pl backend/totp-service spring-boot:run
+mvn -pl backend/user-service spring-boot:run
+mvn -pl backend/accounts-service spring-boot:run
+mvn -pl backend/transfer-service spring-boot:run
+mvn -pl backend/payments-service spring-boot:run
+mvn -pl backend/lending-service spring-boot:run
+mvn -pl backend/notification-service spring-boot:run
+mvn -pl backend/api-gateway spring-boot:run
+```
+
+Frontend:
+
+```powershell
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank\frontend\web-service
+npm run dev
+```
+
+Or use the helper script:
+
+```powershell
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+.\scripts\start-dev.ps1
+```
+
+Helpful dev commands:
+
+```powershell
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank\frontend\web-service
+npm test
+
+cd C:\Users\knimn\OneDrive\Documents\GitHub\securebank\secure-bank
+npx lint-staged
+```
+
+`lint-staged` is configured at the monorepo root, so run it from `secure-bank`, not from `frontend/web-service`.
+
+Demo login:
+
+- Username: `kaveesha.demo`
+- Password: `SecureBank@123`
+- OTP: any 6 digits, for example `123456`

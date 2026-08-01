@@ -16,6 +16,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
     table: flyway_schema_history_auth
+    baseline-on-migrate: true
+
+securebank:
+  auth:
+    seed-demo-data: true
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}

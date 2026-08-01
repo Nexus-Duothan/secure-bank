@@ -8,61 +8,23 @@ import {
   CaretUpOutlined,
 } from '@ant-design/icons';
 import accountsService, { type Account, type Transaction } from '../../api/accountsService';
+import userService, { type UserProfile } from '../../api/userService';
 import TransactionRow from '../../components/TransactionRow';
 import BottomNav from '../../components/BottomNav';
+import {
+  DEMO_PROFILE,
+  DEMO_PRIMARY_ACCOUNT,
+  DEMO_RECENT_TRANSACTIONS,
+} from '../../mocks/demoCustomer';
 
 const { Text, Title, Link } = Typography;
 
 const TEAL_TINT = '#DCEFEA';
 const NAVY = '#0B1B2B';
 
-const CURRENT_USER = { firstName: 'John', lastName: 'Doe' };
-
-const MOCK_ACCOUNT: Account = {
-  id: 'acc-001',
-  nickname: 'Current Account',
-  accountType: 'CURRENT',
-  lastFourDigits: '4821',
-  balance: 48231.76,
-  currency: 'USD',
-  monthlyChangePercent: 2.4,
-  verifiedLabel: '2m ago',
-};
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'txn-1',
-    merchant: 'Ceylon Electricity Board',
-    category: 'Utilities',
-    date: 'Today',
-    amount: -84.2,
-    verified: true,
-  },
-  {
-    id: 'txn-2',
-    merchant: 'Salary Deposit',
-    category: 'Income',
-    date: 'Yesterday',
-    amount: 3200,
-    verified: true,
-  },
-  {
-    id: 'txn-3',
-    merchant: "Kumar's Grocers",
-    category: 'Groceries',
-    date: 'Jul 20',
-    amount: -46.75,
-    verified: true,
-  },
-  {
-    id: 'txn-4',
-    merchant: 'Transfer to A. Silva',
-    category: 'Transfer',
-    date: 'Jul 19',
-    amount: -150,
-    verified: true,
-  },
-];
+const MOCK_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
+const MOCK_TRANSACTIONS: Transaction[] = DEMO_RECENT_TRANSACTIONS;
+const MOCK_PROFILE: UserProfile = DEMO_PROFILE;
 
 const QUICK_ACTIONS = [
   { key: 'transfer', label: 'Transfer', icon: <SwapOutlined />, path: '/transfer' },
@@ -96,11 +58,21 @@ const formatCurrency = (value: number, currency: string) =>
 const Dashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
   const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
 
   useEffect(() => {
     let cancelled = false;
+
+    userService
+      .getProfile()
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        // Endpoint not available yet - fall back to the placeholder shown above.
+      });
 
     accountsService
       .getPrimaryAccount()
@@ -125,7 +97,7 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const fullName = `${CURRENT_USER.firstName} ${CURRENT_USER.lastName}`;
+  const fullName = profile.fullName;
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -141,7 +113,11 @@ const Dashboard: React.FC = () => {
               {fullName}
             </Title>
           </div>
-          <Avatar size={48} style={{ background: NAVY, fontWeight: 600 }}>
+          <Avatar
+            size={48}
+            style={{ background: NAVY, fontWeight: 600, cursor: 'pointer' }}
+            onClick={() => navigate('/profile?panel=personal')}
+          >
             {getInitials(fullName)}
           </Avatar>
         </Flex>

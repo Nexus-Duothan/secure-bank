@@ -15,21 +15,12 @@ import {
 import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
 import paymentsService from '../../api/paymentsService';
+import { DEMO_PRIMARY_ACCOUNT, DEMO_SECONDARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
-const MOCK_FROM_ACCOUNT: Account = {
-  id: 'acc-001',
-  nickname: 'Current Account',
-  accountType: 'CURRENT',
-  lastFourDigits: '0003',
-  balance: 428650.0,
-  currency: 'LKR',
-  monthlyChangePercent: 0,
-  verifiedLabel: 'now',
-};
-
-const SECONDARY_ACCOUNT = { id: 'acc-002', label: 'Savings Account · LKR 128,900.00' };
+const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
+const SECONDARY_ACCOUNT = DEMO_SECONDARY_ACCOUNT;
 
 type BillerCategory = 'Electricity' | 'Water' | 'Internet' | 'Mobile';
 
@@ -81,7 +72,7 @@ const PayVendor: React.FC = () => {
         if (!cancelled) setFromAccount(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        // Endpoint not available yet - fall back to the placeholder shown above.
       });
     return () => {
       cancelled = true;
@@ -129,7 +120,7 @@ const PayVendor: React.FC = () => {
   const fromAccountOptions = [
     {
       value: fromAccount.id,
-      label: `${fromAccount.nickname} · ${formatCurrency(fromAccount.currency, fromAccount.balance)}`,
+      label: `${fromAccount.nickname} - ${formatCurrency(fromAccount.currency, fromAccount.balance)}`,
     },
     { value: SECONDARY_ACCOUNT.id, label: SECONDARY_ACCOUNT.label },
   ];

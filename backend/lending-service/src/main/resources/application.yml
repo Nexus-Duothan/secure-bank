@@ -1,13 +1,14 @@
 server:
-  port: 8087
+  port: ${SERVER_PORT:8087}
 
 spring:
   application:
     name: lending-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/securebank
-    username: securebank
-    password: securebank_secret_pass
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/securebank}
+    username: ${SPRING_DATASOURCE_USERNAME:securebank}
+    password: ${SPRING_DATASOURCE_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:none}
+    open-in-view: false
