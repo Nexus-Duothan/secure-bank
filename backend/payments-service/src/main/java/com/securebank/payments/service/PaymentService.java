@@ -45,7 +45,6 @@ public class PaymentService {
   private final ReceiptReferenceGenerator receiptReferenceGenerator;
   private final ObjectMapper objectMapper;
 
-  @Transactional
   public PaymentResponse pay(UUID payerUserId, PayRequest request) {
     Merchant merchant = merchantService.findActiveByCode(request.getMerchantCode());
     return processPayment(
@@ -58,7 +57,6 @@ public class PaymentService {
     );
   }
 
-  @Transactional
   public PaymentResponse payByQr(UUID payerUserId, QrPayRequest request) {
     QrPaymentDetails details = qrCodeDecoder.decode(request.getQrPayload());
     Merchant merchant = merchantService.findActiveByCode(details.getMerchantCode());
@@ -75,6 +73,11 @@ public class PaymentService {
     return processPayment(payerUserId, merchant, amount, currency, PaymentChannel.QR, null);
   }
 
+  // Deliberately not @Transactional: accountsServiceClient.debit() and the audit-recovery
+  // calls in runFraudCheck() are outbound WebClient I/O and must not hold a DB connection
+  // for their duration. Each repository save() below is transactional on its own (Spring
+  // Data JPA wraps repository methods individually), so this still leaves no partially
+  // written row visible mid-write — it just stops bracketing network calls in one transaction.
   private PaymentResponse processPayment(
     UUID payerUserId,
     Merchant merchant,
@@ -185,8 +188,8 @@ public class PaymentService {
   }
 
   @Transactional(readOnly = true)
-  public ReceiptResponse getReceipt(UUID paymentId, UUID requesterUserId) {
-    VendorPayment payment = findOwnedOrVisible(paymentId, requesterUserId, false);
+  public ReceiptResponse getReceipt(UUID paymentId, UUID requesterUserId, boolean isOfficer) {
+    VendorPayment payment = findOwnedOrVisible(paymentId, requesterUserId, isOfficer);
     if (
       payment.getStatus() != PaymentStatus.COMPLETED &&
       payment.getStatus() != PaymentStatus.HELD_FOR_REVIEW

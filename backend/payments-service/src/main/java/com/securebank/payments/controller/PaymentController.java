@@ -51,13 +51,7 @@ public class PaymentController {
     @PathVariable UUID id
   ) {
     UUID requesterId = UUID.fromString(authentication.getName());
-    boolean isOfficer = authentication
-      .getAuthorities()
-      .stream()
-      .anyMatch(
-        a -> a.getAuthority().equals("ROLE_BANK_OFFICER") || a.getAuthority().equals("ROLE_ADMIN")
-      );
-    PaymentResponse response = paymentService.getById(id, requesterId, isOfficer);
+    PaymentResponse response = paymentService.getById(id, requesterId, isOfficer(authentication));
     return ResponseEntity.ok(response);
   }
 
@@ -67,8 +61,21 @@ public class PaymentController {
     @PathVariable UUID id
   ) {
     UUID requesterId = UUID.fromString(authentication.getName());
-    ReceiptResponse response = paymentService.getReceipt(id, requesterId);
+    ReceiptResponse response = paymentService.getReceipt(
+      id,
+      requesterId,
+      isOfficer(authentication)
+    );
     return ResponseEntity.ok(response);
+  }
+
+  private boolean isOfficer(Authentication authentication) {
+    return authentication
+      .getAuthorities()
+      .stream()
+      .anyMatch(
+        a -> a.getAuthority().equals("ROLE_BANK_OFFICER") || a.getAuthority().equals("ROLE_ADMIN")
+      );
   }
 
   @GetMapping
