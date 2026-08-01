@@ -1,0 +1,39 @@
+server:
+  port: 0
+
+spring:
+  application:
+    name: notification-service-test
+  datasource:
+    url: jdbc:h2:mem:notificationtest;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_notification
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-test-group
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: '*'
+        max.block.ms: 1000
+
+jwt:
+  secret: dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=
+
+notification:
+  sms:
+    enabled: true
+    guaranteed-security-fallback: true
+  email:
+    enabled: true
+  push:
+    enabled: true
