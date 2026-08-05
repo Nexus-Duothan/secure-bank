@@ -3,7 +3,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY backend/auth-service/pom.xml backend/auth-service/
 COPY backend/auth-service/src backend/auth-service/src
-RUN apk add --no-cache maven && mvn package -pl backend/auth-service -DskipTests
+RUN apk add --no-cache maven && mvn package -f backend/auth-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

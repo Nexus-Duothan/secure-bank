@@ -3,7 +3,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY backend/user-service/pom.xml backend/user-service/
 COPY backend/user-service/src backend/user-service/src
-RUN apk add --no-cache maven && mvn package -pl backend/user-service -DskipTests
+RUN apk add --no-cache maven && mvn package -f backend/user-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

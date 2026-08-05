@@ -3,7 +3,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY backend/payments-service/pom.xml backend/payments-service/
 COPY backend/payments-service/src backend/payments-service/src
-RUN apk add --no-cache maven && mvn package -pl backend/payments-service -DskipTests
+RUN apk add --no-cache maven && mvn package -f backend/payments-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

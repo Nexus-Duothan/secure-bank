@@ -3,7 +3,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY backend/lending-service/pom.xml backend/lending-service/
 COPY backend/lending-service/src backend/lending-service/src
-RUN apk add --no-cache maven && mvn package -pl backend/lending-service -DskipTests
+RUN apk add --no-cache maven && mvn package -f backend/lending-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

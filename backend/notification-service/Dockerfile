@@ -3,7 +3,7 @@ WORKDIR /build
 COPY pom.xml .
 COPY backend/notification-service/pom.xml backend/notification-service/
 COPY backend/notification-service/src backend/notification-service/src
-RUN apk add --no-cache maven && mvn package -pl backend/notification-service -DskipTests
+RUN apk add --no-cache maven && mvn package -f backend/notification-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
