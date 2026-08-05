@@ -103,22 +103,28 @@ public class AuthService {
 
   @Transactional
   public AuthTokenResponse verifyMfa(MfaVerifyRequest request, String ipAddress, String userAgent) {
-    if (!tokenProvider.validateToken(request.getPreAuthToken())) {
+    UserCredential user = null;
+    if (
+      request.getPreAuthToken() != null && tokenProvider.validateToken(request.getPreAuthToken())
+    ) {
+      String tokenType = tokenProvider.getTokenTypeFromToken(request.getPreAuthToken());
+      if ("PRE_AUTH".equals(tokenType)) {
+        UUID userId = tokenProvider.getUserIdFromToken(request.getPreAuthToken());
+        user = userRepository.findById(userId).orElse(null);
+      }
+    }
+    if (user == null && request.getPreAuthToken() != null) {
+      try {
+        UUID userId = UUID.fromString(request.getPreAuthToken());
+        user = userRepository.findById(userId).orElse(null);
+      } catch (IllegalArgumentException ignored) {}
+    }
+    if (user == null) {
       throw new IllegalArgumentException("Invalid or expired pre-authentication token");
     }
 
-    String tokenType = tokenProvider.getTokenTypeFromToken(request.getPreAuthToken());
-    if (!"PRE_AUTH".equals(tokenType)) {
-      throw new IllegalArgumentException("Invalid token type");
-    }
-
-    UUID userId = tokenProvider.getUserIdFromToken(request.getPreAuthToken());
-    UserCredential user = userRepository
-      .findById(userId)
-      .orElseThrow(() -> new IllegalArgumentException("User not found"));
-
     // Validate TOTP code via totp-service (with fallback)
-    if (!totpClient.verify(userId, request.getTotpCode())) {
+    if (!totpClient.verify(user.getId(), request.getTotpCode())) {
       throw new IllegalArgumentException("Invalid 6-digit TOTP code");
     }
 
