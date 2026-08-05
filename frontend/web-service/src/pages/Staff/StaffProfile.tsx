@@ -208,7 +208,7 @@ const StaffProfile: React.FC = () => {
         icon={<SafetyOutlined />}
         style={{ marginBottom: 16 }}
         message="Protected profile"
-        description="Any change to your name, email, mobile number, or alerts must be confirmed with a one-time code sent to your registered mobile number."
+        description="Any change to your name, email, mobile number, or alerts must be confirmed with the current code from your authenticator app."
       />
 
       <Card
@@ -316,7 +316,8 @@ const StaffProfile: React.FC = () => {
             color: token.colorTextSecondary,
           }}
         >
-          After you continue, we will send a one-time code to confirm this change.
+          After you continue, enter the current code from your authenticator app to confirm this
+          change.
         </Text>
         <Form<PersonalDetailsFormValues>
           form={form}

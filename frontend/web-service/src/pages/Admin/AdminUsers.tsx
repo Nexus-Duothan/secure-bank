@@ -267,7 +267,7 @@ const AdminUsers: React.FC = () => {
                   showIcon
                   icon={<SafetyOutlined />}
                   message="High-security change"
-                  description="Role and status changes must be confirmed with a one-time code sent to you. Everything is written to the audit journal."
+                  description="Role and status changes must be confirmed with the current code from your authenticator app. Everything is written to the audit journal."
                 />
                 <div>
                   <Title level={5} style={{ margin: '0 0 6px' }}>

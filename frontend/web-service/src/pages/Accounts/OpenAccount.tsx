@@ -194,7 +194,7 @@ const OpenAccount: React.FC = () => {
         <Flex gap={10} style={{ margin: '24px 4px 0' }}>
           <SafetyCertificateOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
           <Text style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-            A debit card is issued for the new account after mobile verification.
+            A debit card is issued for the new account after authenticator app verification.
           </Text>
         </Flex>
       </div>

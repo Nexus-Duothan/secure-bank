@@ -20,7 +20,7 @@ public record TransferServiceProperties(
     limits = limits == null ? new Limits(null, null, null) : limits;
     accountsClient = accountsClient == null ? new AccountsClient(null) : accountsClient;
     security = security == null ? new Security(false, null) : security;
-    otp = otp == null ? new Otp(null, 0, false) : otp;
+    otp = otp == null ? new Otp(null, 0) : otp;
   }
 
   public record Cors(List<String> allowedOrigins) {
@@ -65,11 +65,10 @@ public record TransferServiceProperties(
   }
 
   /**
-   * @param ttl how long an add-payee OTP challenge stays valid
+   * @param ttl how long an add-payee challenge waits for the caller's authenticator code
    * @param maxAttempts wrong codes tolerated before the challenge is burned
-   * @param exposeCode local-prototype switch that returns the generated code to the caller
    */
-  public record Otp(Duration ttl, int maxAttempts, boolean exposeCode) {
+  public record Otp(Duration ttl, int maxAttempts) {
     public Otp {
       ttl = ttl == null ? Duration.ofMinutes(5) : ttl;
       maxAttempts = maxAttempts <= 0 ? 5 : maxAttempts;

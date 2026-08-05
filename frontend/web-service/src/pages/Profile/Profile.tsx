@@ -1223,7 +1223,8 @@ const Profile: React.FC = () => {
         title="Freeze account"
       >
         <Text style={{ display: 'block', marginBottom: 16, color: token.colorTextSecondary }}>
-          Add a short reason for the freeze. You will confirm the request with an OTP.
+          Add a short reason for the freeze. You will confirm the request with your authenticator
+          app.
         </Text>
         <Form form={freezeForm} layout="vertical">
           <Form.Item label="Reason" name="reason">

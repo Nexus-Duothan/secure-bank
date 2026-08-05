@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record UserServiceProperties(boolean seedDemoData, Cors cors, Otp otp, Security security) {
   public UserServiceProperties {
     cors = cors == null ? new Cors(null) : cors;
-    otp = otp == null ? new Otp(null, 0, false) : otp;
+    otp = otp == null ? new Otp(null, 0) : otp;
     security = security == null ? new Security(false) : security;
   }
 
@@ -24,11 +24,10 @@ public record UserServiceProperties(boolean seedDemoData, Cors cors, Otp otp, Se
 
   /**
    * @param ttl how long a challenge stays valid
-   * @param maxAttempts wrong codes tolerated before the challenge is burned (blocks brute force
-   *     of the six digit space, FR-33)
-   * @param exposeCode local-prototype switch that returns the generated code to the caller
+   * @param maxAttempts wrong authenticator codes tolerated before the challenge is burned (blocks
+   *     brute force of the six digit space, FR-33)
    */
-  public record Otp(Duration ttl, int maxAttempts, boolean exposeCode) {
+  public record Otp(Duration ttl, int maxAttempts) {
     public Otp {
       ttl = ttl == null ? Duration.ofMinutes(5) : ttl;
       maxAttempts = maxAttempts <= 0 ? 5 : maxAttempts;

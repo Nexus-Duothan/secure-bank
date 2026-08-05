@@ -1,5 +1,6 @@
 package com.securebank.transfer.service;
 
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.config.TransferServiceProperties;
 import com.securebank.transfer.dto.AddPayeeRequest;
 import com.securebank.transfer.dto.ConfirmPayeeRequest;
@@ -13,35 +14,31 @@ import com.securebank.transfer.repository.PendingPayeeAdditionRepository;
 import com.securebank.transfer.security.CallerIdentity;
 import com.securebank.transfer.service.notification.PayeeAlertService;
 import jakarta.persistence.EntityNotFoundException;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Saved-payee management (FR-16). Adding a payee is staged as a {@link PendingPayeeAddition} and
- * only takes effect once the caller confirms it with a one-time code, so a hijacked session alone
- * can't add a transfer destination. A confirmed payee carries a 12-hour cooling-off window during
- * which {@link TransferService} rejects large transfers to it.
+ * only takes effect once the caller confirms it with the current code from their authenticator app
+ * (TOTP), so a hijacked session alone can't add a transfer destination. A confirmed payee carries a
+ * 12-hour cooling-off window during which {@link TransferService} rejects large transfers to it.
  */
 @Service
 @RequiredArgsConstructor
 public class PayeeService {
 
-  private static final SecureRandom OTP_RANDOM = new SecureRandom();
-  private static final int OTP_BOUND = 1_000_000;
   private static final int COOLING_OFF_HOURS = 12;
 
   private final PayeeRepository payeeRepository;
   private final PendingPayeeAdditionRepository pendingPayeeAdditionRepository;
-  private final PasswordEncoder otpEncoder;
   private final TransferServiceProperties properties;
   private final PayeeAlertService payeeAlertService;
+  private final TotpClient totpClient;
 
   @Transactional(readOnly = true)
   public List<PayeeResponse> listPayees(CallerIdentity caller) {
@@ -53,11 +50,9 @@ public class PayeeService {
   }
 
   /**
-   * Known gap: the OTP code generated here is never dispatched to the caller outside of
-   * {@code securebank.transfer.otp.expose-code=true} (demo mode). notification-service has no
-   * send/dispatch capability yet (read-only endpoints only, no Kafka consumer implemented), so
-   * there is nowhere real to deliver it to. This flow isn't completable end-to-end in a real
-   * deployment until that lands; tracked as a follow-up, not an oversight.
+   * Stages the payee. Nothing is sent anywhere: the code comes from the authenticator app the
+   * caller already enrolled, which also closes the old gap where a generated SMS code had no
+   * delivery channel to reach the customer through.
    */
   @Transactional
   public PayeeChallengeResponse requestAddPayee(CallerIdentity caller, AddPayeeRequest request) {
@@ -70,24 +65,20 @@ public class PayeeService {
       throw new ConflictException("That account is already saved as a payee");
     }
 
-    String code = generateOtpCode();
     PendingPayeeAddition saved = pendingPayeeAdditionRepository.save(
       PendingPayeeAddition.builder()
         .ownerUserId(caller.userId())
         .nickname(request.nickname().trim())
         .accountReference(request.accountReference().trim())
-        .otpHash(otpEncoder.encode(code))
         .expiresAt(Instant.now().plus(properties.otp().ttl()))
         .build()
     );
 
-    payeeAlertService.sendOtpChallenge(caller.userId(), "ADD_PAYEE", code, saved.getExpiresAt());
-
     return new PayeeChallengeResponse(
       saved.getId(),
       saved.getExpiresAt(),
-      "Enter the six digit code sent to your registered contact to confirm this payee.",
-      properties.otp().exposeCode() ? code : null
+      "Enter the current six digit code from your authenticator app to confirm this payee.",
+      null
     );
   }
 
@@ -105,7 +96,7 @@ public class PayeeService {
       .findByIdAndOwnerUserId(changeRequestId, caller.userId())
       .orElseThrow(() -> new EntityNotFoundException("Payee change request not found"));
 
-    verifyOtp(change, request.otpCode());
+    verifyTotp(caller, change, request.otpCode());
 
     if (
       payeeRepository.existsByOwnerUserIdAndAccountReferenceIgnoreCase(
@@ -146,7 +137,11 @@ public class PayeeService {
     payeeRepository.delete(payee);
   }
 
-  private void verifyOtp(PendingPayeeAddition change, String submittedCode) {
+  private void verifyTotp(
+    CallerIdentity caller,
+    PendingPayeeAddition change,
+    String submittedCode
+  ) {
     if (change.isConfirmed()) {
       throw new ConflictException("Payee addition already confirmed");
     }
@@ -157,20 +152,16 @@ public class PayeeService {
       );
     }
     if (change.isExpired(Instant.now())) {
-      throw new OtpVerificationException("OTP challenge expired");
+      throw new OtpVerificationException("Verification request expired");
     }
-    if (!otpEncoder.matches(submittedCode, change.getOtpHash())) {
+    if (!totpClient.verify(caller.userId(), submittedCode)) {
       change.setFailedAttempts(change.getFailedAttempts() + 1);
       pendingPayeeAdditionRepository.save(change);
       int remaining = Math.max(0, maxAttempts - change.getFailedAttempts());
       throw new OtpVerificationException(
-        "Invalid OTP code, " + remaining + " attempt(s) remaining"
+        "Invalid authenticator code, " + remaining + " attempt(s) remaining"
       );
     }
-  }
-
-  private String generateOtpCode() {
-    return "%06d".formatted(OTP_RANDOM.nextInt(OTP_BOUND));
   }
 
   private Payee findOwned(CallerIdentity caller, UUID payeeId) {

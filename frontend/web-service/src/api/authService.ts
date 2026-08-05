@@ -31,8 +31,6 @@ export interface AuthTokenResponse {
   status: string;
 }
 
-export type AccountType = 'SAVINGS' | 'CURRENT';
-
 export interface CreateAccountPayload {
   fullName: string;
   dateOfBirth: string;
@@ -40,7 +38,6 @@ export interface CreateAccountPayload {
   phoneNumber: string;
   address: string;
   nationalIdOrPassport: string;
-  accountType: AccountType;
   username: string;
   password: string;
 }

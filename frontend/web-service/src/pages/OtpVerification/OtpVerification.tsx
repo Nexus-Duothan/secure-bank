@@ -24,6 +24,8 @@ const RESEND_SECONDS = 30;
 interface LoginLocationState {
   preAuthToken?: string;
   usernameOrEmail?: string;
+  /** Set only by sign-up, the one flow still confirmed by an SMS code to the mobile number. */
+  registration?: boolean;
 }
 
 interface ProfileChangeLocationState {
@@ -99,6 +101,7 @@ const OtpVerification: React.FC = () => {
     creditCardLinkFlow ||
     adminChangeFlow;
   const preAuthToken = !accountOrProfileChangeFlow ? loginRouteState?.preAuthToken : undefined;
+  const registrationFlow = !accountOrProfileChangeFlow && loginRouteState?.registration === true;
   const accountOrProfileChallenge = changeRouteState?.challenge ?? null;
   const changeFlowBackPath = accountOpeningFlow
     ? '/accounts/open'
@@ -140,7 +143,8 @@ const OtpVerification: React.FC = () => {
   ]);
 
   const handleResend = async () => {
-    if (accountOrProfileChangeFlow) return;
+    // Only sign-up sends a code anywhere; every other flow reads it from the authenticator app.
+    if (!registrationFlow) return;
     if (!isFinished) return;
     setOtp('');
     setError(null);
@@ -248,18 +252,20 @@ const OtpVerification: React.FC = () => {
       >
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
 
-        {accountOrProfileChangeFlow && accountOrProfileChallenge?.message && (
-          <Text
-            style={{
-              display: 'block',
-              marginBottom: 16,
-              color: token.colorTextSecondary,
-              fontSize: 13,
-            }}
-          >
-            {accountOrProfileChallenge.message}
-          </Text>
-        )}
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 16,
+            color: token.colorTextSecondary,
+            fontSize: 13,
+          }}
+        >
+          {accountOrProfileChangeFlow
+            ? accountOrProfileChallenge?.message
+            : registrationFlow
+              ? 'Enter the six digit code we sent by SMS to your registered mobile number.'
+              : 'Open your authenticator app and enter the current six digit code.'}
+        </Text>
 
         <div className="otp-boxes">
           <Input.OTP
@@ -274,17 +280,7 @@ const OtpVerification: React.FC = () => {
         </div>
 
         <Flex style={{ marginTop: 20, marginBottom: 24 }}>
-          {accountOrProfileChangeFlow ? (
-            <>
-              <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
-              <Link
-                onClick={() => navigate(changeFlowBackPath, { replace: true })}
-                style={{ color: token.colorPrimary }}
-              >
-                Go back
-              </Link>
-            </>
-          ) : (
+          {registrationFlow ? (
             <>
               <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
               {isFinished ? (
@@ -297,6 +293,20 @@ const OtpVerification: React.FC = () => {
                 </Text>
               )}
             </>
+          ) : accountOrProfileChangeFlow ? (
+            <>
+              <Text style={{ color: token.colorTextSecondary }}>Code not working?&nbsp;</Text>
+              <Link
+                onClick={() => navigate(changeFlowBackPath, { replace: true })}
+                style={{ color: token.colorPrimary }}
+              >
+                Go back
+              </Link>
+            </>
+          ) : (
+            <Text style={{ color: token.colorTextSecondary }}>
+              The code changes every 30 seconds. Wait for a fresh one if it is about to expire.
+            </Text>
           )}
         </Flex>
 
@@ -316,9 +326,11 @@ const OtpVerification: React.FC = () => {
         text={
           accountOrProfileChangeFlow
             ? accountLinkFlow || creditCardLinkFlow
-              ? 'SecureBank confirms account ownership with one-time verification.'
-              : 'SecureBank protects account changes with one-time verification.'
-            : 'This device will be remembered for 30 days'
+              ? 'SecureBank confirms account ownership with your authenticator app.'
+              : 'SecureBank protects account changes with your authenticator app.'
+            : registrationFlow
+              ? 'This device will be remembered for 30 days'
+              : 'SecureBank signs you in with your authenticator app.'
         }
       />
     </AuthLayout>

@@ -1,5 +1,8 @@
 package com.securebank.transfer.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -7,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.dto.AddPayeeRequest;
 import com.securebank.transfer.dto.ConfirmPayeeRequest;
 import io.jsonwebtoken.Jwts;
@@ -15,11 +19,13 @@ import io.jsonwebtoken.security.Keys;
 import java.util.Date;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -41,7 +47,18 @@ class PayeeControllerTest {
   @Value("${jwt.secret}")
   private String jwtSecret;
 
+  @MockBean
+  private TotpClient totpClient;
+
   private final UUID userId = UUID.randomUUID();
+
+  /** The code the caller's authenticator app is showing in these tests. */
+  private static final String VALID_TOTP_CODE = "123456";
+
+  @BeforeEach
+  void stubAuthenticator() {
+    given(totpClient.verify(any(), eq(VALID_TOTP_CODE))).willReturn(true);
+  }
 
   private String accessToken() {
     SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
@@ -77,21 +94,21 @@ class PayeeControllerTest {
           .content(objectMapper.writeValueAsString(addRequest))
       )
       .andExpect(status().isOk())
-      .andExpect(jsonPath("$.demoCode").exists())
+      // No code is generated or sent; it comes from the caller's authenticator app.
+      .andExpect(jsonPath("$.demoCode").doesNotExist())
       .andReturn()
       .getResponse()
       .getContentAsString();
 
     var challenge = objectMapper.readTree(challengeBody);
     String changeRequestId = challenge.get("changeRequestId").asText();
-    String demoCode = challenge.get("demoCode").asText();
 
     mockMvc
       .perform(
         post("/api/v1/transfers/payees/{id}/confirm", changeRequestId)
           .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
           .contentType(MediaType.APPLICATION_JSON)
-          .content(objectMapper.writeValueAsString(new ConfirmPayeeRequest(demoCode)))
+          .content(objectMapper.writeValueAsString(new ConfirmPayeeRequest(VALID_TOTP_CODE)))
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.nickname").value("A. Silva"))

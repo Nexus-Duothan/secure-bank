@@ -3,12 +3,13 @@ package com.securebank.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securebank.user.client.TotpClient;
 import com.securebank.user.config.UserServiceProperties;
 import com.securebank.user.dto.ConfirmChangeRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
@@ -40,14 +41,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
   private static final UUID CUSTOMER_ID = UUID.randomUUID();
   private static final UUID ADMIN_ID = UUID.randomUUID();
+  /** The code the customer's authenticator app is showing in these tests. */
   private static final String KNOWN_CODE = "123456";
   private static final int MAX_ATTEMPTS = 3;
 
@@ -63,8 +63,10 @@ class UserServiceTest {
   @Mock
   private UserSecurityAlertService userSecurityAlertService;
 
+  @Mock
+  private TotpClient totpClient;
+
   private final ObjectMapper objectMapper = new ObjectMapper();
-  private final PasswordEncoder otpEncoder = new BCryptPasswordEncoder();
 
   private UserService userService;
 
@@ -73,7 +75,7 @@ class UserServiceTest {
     UserServiceProperties properties = new UserServiceProperties(
       false,
       null,
-      new UserServiceProperties.Otp(Duration.ofMinutes(5), MAX_ATTEMPTS, true),
+      new UserServiceProperties.Otp(Duration.ofMinutes(5), MAX_ATTEMPTS),
       new UserServiceProperties.Security(false)
     );
     userService = new UserService(
@@ -81,18 +83,18 @@ class UserServiceTest {
       userDeviceRepository,
       pendingUserChangeRepository,
       objectMapper,
-      otpEncoder,
       properties,
-      userSecurityAlertService
+      userSecurityAlertService,
+      totpClient
     );
   }
 
   @Nested
-  @DisplayName("OTP confirmed changes (FR-07)")
-  class OtpConfirmedChanges {
+  @DisplayName("TOTP confirmed changes (FR-07)")
+  class TotpConfirmedChanges {
 
     @Test
-    void issuesARandomCodeAndPersistsOnlyItsHash() {
+    void stagesTheChangeWithoutGeneratingOrSendingAnyCode() {
       when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(customer()));
       when(userProfileRepository.existsByEmailIgnoreCaseAndIdNot(any(), any())).thenReturn(false);
       when(pendingUserChangeRepository.save(any())).thenAnswer(call -> call.getArgument(0));
@@ -102,26 +104,18 @@ class UserServiceTest {
         profileUpdate("Jane Doe", "jane.doe@securebank.lk")
       );
 
-      ArgumentCaptor<PendingUserChange> captor = ArgumentCaptor.forClass(PendingUserChange.class);
-      verify(pendingUserChangeRepository).save(captor.capture());
-      PendingUserChange stored = captor.getValue();
+      verify(pendingUserChangeRepository).save(any(PendingUserChange.class));
 
-      assertThat(challenge.demoCode()).hasSize(6).containsOnlyDigits();
-      assertThat(stored.getOtpHash()).isNotEqualTo(challenge.demoCode());
-      assertThat(otpEncoder.matches(challenge.demoCode(), stored.getOtpHash())).isTrue();
-      assertThat(challenge.deliveryTarget()).isEqualTo("+94***4567");
-      assertThat(challenge.message()).contains("registered mobile number");
-      verify(userSecurityAlertService).sendOtpChallenge(
-        any(UserProfile.class),
-        eq(ChangeRequestType.UPDATE_PROFILE),
-        eq(challenge.demoCode()),
-        eq(stored.getExpiresAt())
-      );
+      assertThat(challenge.demoCode()).isNull();
+      assertThat(challenge.deliveryTarget()).isEqualTo("Authenticator app");
+      assertThat(challenge.message()).contains("authenticator app");
+      verifyNoInteractions(userSecurityAlertService);
     }
 
     @Test
-    void appliesTheStagedUpdateWhenTheCodeMatches() {
+    void appliesTheStagedUpdateWhenTheAuthenticatorCodeMatches() {
       UserProfile profile = customer();
+      when(totpClient.verify(CUSTOMER_ID, KNOWN_CODE)).thenReturn(true);
       PendingUserChange change = profileChange("{\"fullName\":\"Jane Doe\"}");
       when(
         pendingUserChangeRepository.findByIdAndUserProfileId(change.getId(), CUSTOMER_ID)
@@ -331,7 +325,6 @@ class UserServiceTest {
       .userProfileId(CUSTOMER_ID)
       .type(type)
       .payloadJson(payloadJson)
-      .otpHash(otpEncoder.encode(KNOWN_CODE))
       .expiresAt(Instant.now().plusSeconds(300))
       .build();
   }

@@ -17,7 +17,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -25,21 +24,14 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-@Slf4j
 public class AccountsService {
 
   private static final ZoneId COLOMBO = ZoneId.of("Asia/Colombo");
-  private static final DateTimeFormatter EXPIRY_TIME = DateTimeFormatter.ofPattern(
-    "dd MMM yyyy HH:mm"
-  ).withZone(COLOMBO);
   private static final DateTimeFormatter STATEMENT_DATE = DateTimeFormatter.ofPattern(
     "dd MMM yyyy"
   );
@@ -49,12 +41,11 @@ public class AccountsService {
   private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
   private static final String DEMO_USER_ID = "8f7113d3-9f5b-4a7b-88fd-0a0b7854b1d1";
   private static final String DEMO_FULL_NAME = "Kaveesha Kapitiarachchi";
-  private static final String DEMO_EMAIL = "kaveesha.kapitiarachchi@securebank.lk";
-  private static final String DEMO_PHONE = "+94 77 510 6101";
   private static final String DEMO_ADDRESS_LINE = "42 Lake Drive";
   private static final String DEMO_ADDRESS_CITY = "Kandy, Sri Lanka";
-  private static final int OTP_MAX_ATTEMPTS = 5;
-  private static final int OTP_LENGTH = 6;
+  private static final int TOTP_MAX_ATTEMPTS = 5;
+  /** Shown instead of a masked phone number now that codes come from the authenticator app. */
+  private static final String TOTP_DELIVERY_TARGET = "Authenticator app";
 
   /**
    * The bank's account product catalogue (FR-09). A customer can only open an
@@ -157,8 +148,7 @@ public class AccountsService {
     new ConcurrentHashMap<>();
   /** Product name per opened account, so the detail page and card can show it. */
   private final ConcurrentMap<String, String> productNameByAccountId = new ConcurrentHashMap<>();
-  private final RestClient restClient;
-  private final boolean exposeOtpCode;
+  private final TotpClient totpClient;
   private final AccountState primaryAccount = new AccountState(
     "acc-demo-primary",
     "Everyday Current",
@@ -197,7 +187,7 @@ public class AccountsService {
   );
   private final Map<String, EligibleAccount> eligibleAccountsByNumber = Map.of(
     "1234567890",
-    new EligibleAccount(savingsAccount, "200229602936", DEMO_PHONE)
+    new EligibleAccount(savingsAccount, "200229602936")
   );
 
   private static final List<TransactionResponse> RECENT_TRANSACTIONS = List.of(
@@ -423,14 +413,8 @@ public class AccountsService {
     )
   );
 
-  public AccountsService(
-    @Value(
-      "${securebank.notification.service-url:http://localhost:8088}"
-    ) String notificationServiceUrl,
-    @Value("${securebank.accounts.otp.expose-code:false}") boolean exposeOtpCode
-  ) {
-    this.restClient = RestClient.builder().baseUrl(notificationServiceUrl).build();
-    this.exposeOtpCode = exposeOtpCode;
+  public AccountsService(TotpClient totpClient) {
+    this.totpClient = totpClient;
     accountsById.put(primaryAccount.id(), primaryAccount);
     accountsById.put(savingsAccount.id(), savingsAccount);
     linkedAccountIds.add(primaryAccount.id());
@@ -550,20 +534,24 @@ public class AccountsService {
     return toAccountDetailResponse(requireLinkedAccount(id));
   }
 
-  public OtpChallengeResponse requestFreeze(String id, FreezeAccountRequest request) {
+  public OtpChallengeResponse requestFreeze(
+    String id,
+    FreezeAccountRequest request,
+    String callerUserId
+  ) {
     AccountState account = requireLinkedAccount(id);
     if (account.frozen()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already frozen");
     }
-    return createChange("FREEZE_ACCOUNT", id, request.reason());
+    return createChange("FREEZE_ACCOUNT", id, request.reason(), resolveCaller(callerUserId));
   }
 
-  public OtpChallengeResponse requestUnfreeze(String id) {
+  public OtpChallengeResponse requestUnfreeze(String id, String callerUserId) {
     AccountState account = requireLinkedAccount(id);
     if (!account.frozen()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is not frozen");
     }
-    return createChange("UNFREEZE_ACCOUNT", id, null);
+    return createChange("UNFREEZE_ACCOUNT", id, null, resolveCaller(callerUserId));
   }
 
   public AccountDetailResponse confirmChange(UUID changeRequestId, ConfirmChangeRequest request) {
@@ -573,22 +561,17 @@ public class AccountsService {
     }
     if (change.expiresAt().isBefore(Instant.now())) {
       pendingChanges.remove(changeRequestId);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP challenge expired");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
     }
-    if (change.failedAttempts() >= OTP_MAX_ATTEMPTS) {
+    if (change.failedAttempts() >= TOTP_MAX_ATTEMPTS) {
       throw new ResponseStatusException(
         HttpStatus.BAD_REQUEST,
         "Too many incorrect codes for this request; start the change again"
       );
     }
-    if (!change.code().equals(request.otpCode())) {
+    if (!totpClient.verify(change.userId(), request.otpCode())) {
       change.incrementAttempts();
-      throw new ResponseStatusException(
-        HttpStatus.BAD_REQUEST,
-        "Invalid OTP code, " +
-          Math.max(0, OTP_MAX_ATTEMPTS - change.failedAttempts()) +
-          " attempt(s) remaining"
-      );
+      throwTotpError(change.failedAttempts());
     }
 
     AccountState account = requireLinkedAccount(change.accountId());
@@ -606,7 +589,7 @@ public class AccountsService {
     return buildStatementPdf(account, buildStatementSnapshot(account, accountActivity(id)));
   }
 
-  public OtpChallengeResponse requestAccountLink(LinkAccountRequest request) {
+  public OtpChallengeResponse requestAccountLink(LinkAccountRequest request, String callerUserId) {
     String accountNumber = normalizeIdentifier(request.accountNumber());
     EligibleAccount eligibleAccount = eligibleAccountsByNumber.get(accountNumber);
     if (
@@ -624,27 +607,20 @@ public class AccountsService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "This account is already linked");
     }
 
-    String code = generateOtpCode();
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
     pendingLinks.put(
       changeRequestId,
-      new PendingAccountLink(
-        eligibleAccount.account().id(),
-        code,
-        expiresAt,
-        eligibleAccount.registeredPhone()
-      )
+      new PendingAccountLink(eligibleAccount.account().id(), resolveCaller(callerUserId), expiresAt)
     );
-    dispatchOtp(code, expiresAt, "LINK_ACCOUNT", eligibleAccount.registeredPhone());
 
     return new OtpChallengeResponse(
       changeRequestId,
       "LINK_ACCOUNT",
-      "",
+      TOTP_DELIVERY_TARGET,
       expiresAt,
-      "Enter the six digit code sent by SMS to the mobile number registered with this account.",
-      exposeOtpCode ? code : null
+      "Enter the current six digit code from your authenticator app to link this account.",
+      null
     );
   }
 
@@ -658,22 +634,17 @@ public class AccountsService {
     }
     if (link.expiresAt().isBefore(Instant.now())) {
       pendingLinks.remove(changeRequestId);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP challenge expired");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
     }
-    if (link.failedAttempts() >= OTP_MAX_ATTEMPTS) {
+    if (link.failedAttempts() >= TOTP_MAX_ATTEMPTS) {
       throw new ResponseStatusException(
         HttpStatus.BAD_REQUEST,
         "Too many incorrect codes for this request; start linking the account again"
       );
     }
-    if (!link.code().equals(request.otpCode())) {
+    if (!totpClient.verify(link.userId(), request.otpCode())) {
       link.incrementAttempts();
-      throw new ResponseStatusException(
-        HttpStatus.BAD_REQUEST,
-        "Invalid OTP code, " +
-          Math.max(0, OTP_MAX_ATTEMPTS - link.failedAttempts()) +
-          " attempt(s) remaining"
-      );
+      throwTotpError(link.failedAttempts());
     }
     linkedAccountIds.add(link.accountId());
     pendingLinks.remove(changeRequestId);
@@ -692,21 +663,24 @@ public class AccountsService {
       .toList();
   }
 
-  public OtpChallengeResponse requestAccountOpening(OpenAccountRequest request) {
+  public OtpChallengeResponse requestAccountOpening(
+    OpenAccountRequest request,
+    String callerUserId
+  ) {
     // Reject an unknown or mismatched product now, before the customer types a code.
     requireProduct(request.productCode(), request.accountType());
 
-    String code = generateOtpCode();
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
-    pendingOpenings.put(changeRequestId, new PendingAccountOpening(request, code, expiresAt));
-    dispatchOtp(code, expiresAt, "OPEN_ACCOUNT", DEMO_PHONE);
-    return productChallenge(
+    pendingOpenings.put(
+      changeRequestId,
+      new PendingAccountOpening(request, resolveCaller(callerUserId), expiresAt)
+    );
+    return challenge(
       changeRequestId,
       "OPEN_ACCOUNT",
       expiresAt,
-      "Enter the six digit code sent by SMS to open this account.",
-      code
+      "Enter the current six digit code from your authenticator app to open this account."
     );
   }
 
@@ -718,7 +692,7 @@ public class AccountsService {
     if (opening == null) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account opening request not found");
     }
-    validateOpeningOtp(changeRequestId, opening, request.otpCode());
+    validateOpeningTotp(changeRequestId, opening, request.otpCode());
 
     AccountProductResponse product = requireProduct(
       opening.request().productCode(),
@@ -755,7 +729,10 @@ public class AccountsService {
     return new LinkedAccountResponse(toAccountResponse(account), "New account opened successfully");
   }
 
-  public OtpChallengeResponse requestCreditCardLink(LinkCreditCardRequest request) {
+  public OtpChallengeResponse requestCreditCardLink(
+    LinkCreditCardRequest request,
+    String callerUserId
+  ) {
     AccountState account = requireLinkedAccount(request.accountId());
     String cardNumber = normalizeIdentifier(request.cardNumber());
     boolean matchesBankRecord =
@@ -772,17 +749,17 @@ public class AccountsService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "This credit card is already linked");
     }
 
-    String code = generateOtpCode();
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
-    pendingCardLinks.put(changeRequestId, new PendingCardLink(account.id(), code, expiresAt));
-    dispatchOtp(code, expiresAt, "LINK_CREDIT_CARD", DEMO_PHONE);
-    return productChallenge(
+    pendingCardLinks.put(
+      changeRequestId,
+      new PendingCardLink(account.id(), resolveCaller(callerUserId), expiresAt)
+    );
+    return challenge(
       changeRequestId,
       "LINK_CREDIT_CARD",
       expiresAt,
-      "Enter the six digit code sent by SMS to link this credit card.",
-      code
+      "Enter the current six digit code from your authenticator app to link this credit card."
     );
   }
 
@@ -794,7 +771,7 @@ public class AccountsService {
     if (link == null) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit card link request not found");
     }
-    validateCardOtp(changeRequestId, link, request.otpCode());
+    validateCardTotp(changeRequestId, link, request.otpCode());
     AccountState account = requireLinkedAccount(link.accountId());
     BankCardResponse card = new BankCardResponse(
       "card-credit-demo",
@@ -836,40 +813,49 @@ public class AccountsService {
     return product;
   }
 
-  private OtpChallengeResponse productChallenge(
-    UUID id,
-    String type,
-    Instant expiresAt,
-    String message,
-    String code
-  ) {
-    return new OtpChallengeResponse(id, type, "", expiresAt, message, exposeOtpCode ? code : null);
+  private OtpChallengeResponse challenge(UUID id, String type, Instant expiresAt, String message) {
+    return new OtpChallengeResponse(id, type, TOTP_DELIVERY_TARGET, expiresAt, message, null);
   }
 
-  private void validateOpeningOtp(UUID id, PendingAccountOpening opening, String otpCode) {
+  /**
+   * The user whose authenticator app must produce the code. The gateway sets {@code X-User-Id} from
+   * the access token; the demo identity is only used when the service is called without a gateway.
+   */
+  private UUID resolveCaller(String callerUserId) {
+    if (callerUserId == null || callerUserId.isBlank()) {
+      return UUID.fromString(DEMO_USER_ID);
+    }
+    try {
+      return UUID.fromString(callerUserId.trim());
+    } catch (IllegalArgumentException exception) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid caller identity");
+    }
+  }
+
+  private void validateOpeningTotp(UUID id, PendingAccountOpening opening, String totpCode) {
     if (opening.expiresAt().isBefore(Instant.now())) {
       pendingOpenings.remove(id);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP challenge expired");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
     }
-    if (!opening.code().equals(otpCode)) {
+    if (!totpClient.verify(opening.userId(), totpCode)) {
       opening.incrementAttempts();
-      throwOtpError(opening.failedAttempts());
+      throwTotpError(opening.failedAttempts());
     }
   }
 
-  private void validateCardOtp(UUID id, PendingCardLink link, String otpCode) {
+  private void validateCardTotp(UUID id, PendingCardLink link, String totpCode) {
     if (link.expiresAt().isBefore(Instant.now())) {
       pendingCardLinks.remove(id);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP challenge expired");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
     }
-    if (!link.code().equals(otpCode)) {
+    if (!totpClient.verify(link.userId(), totpCode)) {
       link.incrementAttempts();
-      throwOtpError(link.failedAttempts());
+      throwTotpError(link.failedAttempts());
     }
   }
 
-  private void throwOtpError(int failedAttempts) {
-    if (failedAttempts >= OTP_MAX_ATTEMPTS) {
+  private void throwTotpError(int failedAttempts) {
+    if (failedAttempts >= TOTP_MAX_ATTEMPTS) {
       throw new ResponseStatusException(
         HttpStatus.BAD_REQUEST,
         "Too many incorrect codes; start the request again"
@@ -877,7 +863,9 @@ public class AccountsService {
     }
     throw new ResponseStatusException(
       HttpStatus.BAD_REQUEST,
-      "Invalid OTP code, " + (OTP_MAX_ATTEMPTS - failedAttempts) + " attempt(s) remaining"
+      "Invalid authenticator code, " +
+        (TOTP_MAX_ATTEMPTS - failedAttempts) +
+        " attempt(s) remaining"
     );
   }
 
@@ -902,64 +890,25 @@ public class AccountsService {
     );
   }
 
-  private OtpChallengeResponse createChange(String type, String accountId, String reason) {
-    String code = generateOtpCode();
+  private OtpChallengeResponse createChange(
+    String type,
+    String accountId,
+    String reason,
+    UUID callerUserId
+  ) {
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
     pendingChanges.put(
       changeRequestId,
-      new PendingAccountChange(changeRequestId, accountId, type, reason, code, expiresAt)
+      new PendingAccountChange(changeRequestId, accountId, type, reason, callerUserId, expiresAt)
     );
-    dispatchOtp(code, expiresAt, type, DEMO_PHONE);
 
-    return new OtpChallengeResponse(
+    return challenge(
       changeRequestId,
       type,
-      maskPhone(DEMO_PHONE),
       expiresAt,
-      "Enter the six digit code sent to your registered mobile number to confirm this change.",
-      exposeOtpCode ? code : null
+      "Enter the current six digit code from your authenticator app to confirm this change."
     );
-  }
-
-  private void dispatchOtp(String code, Instant expiresAt, String type, String phoneNumber) {
-    try {
-      restClient
-        .post()
-        .uri("/api/v1/notifications/otp-challenges")
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(
-          new OtpChallengeDispatchRequest(
-            UUID.fromString(DEMO_USER_ID),
-            DEMO_FULL_NAME,
-            DEMO_EMAIL,
-            phoneNumber,
-            false,
-            true,
-            type,
-            code,
-            expiresAt
-          )
-        )
-        .retrieve()
-        .toBodilessEntity();
-    } catch (RuntimeException exception) {
-      log.warn(
-        "Unable to queue account OTP via notification-service. SMS fallback remains log-only. {}",
-        exception.getMessage()
-      );
-    }
-    log.info(
-      "Account OTP queued for {}. Code {} expires at {}.",
-      phoneNumber,
-      code,
-      EXPIRY_TIME.format(expiresAt)
-    );
-  }
-
-  private String generateOtpCode() {
-    int random = java.util.concurrent.ThreadLocalRandom.current().nextInt(0, 1_000_000);
-    return String.format("%0" + OTP_LENGTH + "d", random);
   }
 
   private boolean matchesDirection(
@@ -1346,11 +1295,6 @@ public class AccountsService {
     return value == null ? "" : value.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
   }
 
-  private String maskPhone(String phone) {
-    String value = phone.trim();
-    return value.substring(0, 3) + "***" + value.substring(value.length() - 4);
-  }
-
   private AccountResponse toAccountResponse(AccountState state) {
     return new AccountResponse(
       state.id(),
@@ -1396,7 +1340,7 @@ public class AccountsService {
     private final String accountId;
     private final String type;
     private final String reason;
-    private final String code;
+    private final UUID userId;
     private final Instant expiresAt;
     private int failedAttempts;
 
@@ -1405,14 +1349,14 @@ public class AccountsService {
       String accountId,
       String type,
       String reason,
-      String code,
+      UUID userId,
       Instant expiresAt
     ) {
       this.id = id;
       this.accountId = accountId;
       this.type = type;
       this.reason = reason;
-      this.code = code;
+      this.userId = userId;
       this.expiresAt = expiresAt;
     }
 
@@ -1428,8 +1372,8 @@ public class AccountsService {
       return reason;
     }
 
-    private String code() {
-      return code;
+    private UUID userId() {
+      return userId;
     }
 
     private Instant expiresAt() {
@@ -1445,46 +1389,31 @@ public class AccountsService {
     }
   }
 
-  private record EligibleAccount(
-    AccountState account,
-    String nationalIdOrPassport,
-    String registeredPhone
-  ) {}
+  private record EligibleAccount(AccountState account, String nationalIdOrPassport) {}
 
   private static final class PendingAccountLink {
 
     private final String accountId;
-    private final String code;
+    private final UUID userId;
     private final Instant expiresAt;
-    private final String registeredPhone;
     private int failedAttempts;
 
-    private PendingAccountLink(
-      String accountId,
-      String code,
-      Instant expiresAt,
-      String registeredPhone
-    ) {
+    private PendingAccountLink(String accountId, UUID userId, Instant expiresAt) {
       this.accountId = accountId;
-      this.code = code;
+      this.userId = userId;
       this.expiresAt = expiresAt;
-      this.registeredPhone = registeredPhone;
     }
 
     private String accountId() {
       return accountId;
     }
 
-    private String code() {
-      return code;
+    private UUID userId() {
+      return userId;
     }
 
     private Instant expiresAt() {
       return expiresAt;
-    }
-
-    private String registeredPhone() {
-      return registeredPhone;
     }
 
     private int failedAttempts() {
@@ -1499,13 +1428,13 @@ public class AccountsService {
   private static final class PendingAccountOpening {
 
     private final OpenAccountRequest request;
-    private final String code;
+    private final UUID userId;
     private final Instant expiresAt;
     private int failedAttempts;
 
-    private PendingAccountOpening(OpenAccountRequest request, String code, Instant expiresAt) {
+    private PendingAccountOpening(OpenAccountRequest request, UUID userId, Instant expiresAt) {
       this.request = request;
-      this.code = code;
+      this.userId = userId;
       this.expiresAt = expiresAt;
     }
 
@@ -1513,8 +1442,8 @@ public class AccountsService {
       return request;
     }
 
-    private String code() {
-      return code;
+    private UUID userId() {
+      return userId;
     }
 
     private Instant expiresAt() {
@@ -1533,13 +1462,13 @@ public class AccountsService {
   private static final class PendingCardLink {
 
     private final String accountId;
-    private final String code;
+    private final UUID userId;
     private final Instant expiresAt;
     private int failedAttempts;
 
-    private PendingCardLink(String accountId, String code, Instant expiresAt) {
+    private PendingCardLink(String accountId, UUID userId, Instant expiresAt) {
       this.accountId = accountId;
-      this.code = code;
+      this.userId = userId;
       this.expiresAt = expiresAt;
     }
 
@@ -1547,8 +1476,8 @@ public class AccountsService {
       return accountId;
     }
 
-    private String code() {
-      return code;
+    private UUID userId() {
+      return userId;
     }
 
     private Instant expiresAt() {

@@ -34,13 +34,16 @@ export type UserProfile = {
   linkedDevices: UserDevice[];
 };
 
-/** Response to a staged change; the change only takes effect once confirmed with the code. */
+/**
+ * Response to a staged change; the change only takes effect once confirmed with the current code
+ * from the user's authenticator app (TOTP).
+ */
 export type OtpChallenge = {
   changeRequestId: string;
   type: string;
   deliveryTarget: string;
   expiresAt: string;
   message: string;
-  /** Only populated while the service runs with `securebank.user.otp.expose-code` enabled. */
+  /** Always null now that no code is generated or delivered by the backend. */
   demoCode: string | null;
 };

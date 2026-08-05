@@ -136,7 +136,7 @@ class CallerIdentityArgumentResolverTest {
     return new UserServiceProperties(
       seedDemoData,
       new UserServiceProperties.Cors(List.of("http://localhost:5173")),
-      new UserServiceProperties.Otp(null, 5, false),
+      new UserServiceProperties.Otp(null, 5),
       new UserServiceProperties.Security(allowDemoCaller)
     );
   }

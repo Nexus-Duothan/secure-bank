@@ -1,5 +1,8 @@
 package com.securebank.accounts;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -11,19 +14,32 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = "securebank.accounts.otp.expose-code=true")
+@SpringBootTest
 @AutoConfigureMockMvc
 class AccountsControllerTest {
 
+  /** The code a customer would read off their authenticator app in these tests. */
+  private static final String VALID_TOTP_CODE = "123456";
+
   @Autowired
   private MockMvc mockMvc;
+
+  @MockBean
+  private TotpClient totpClient;
+
+  @BeforeEach
+  void stubAuthenticator() {
+    given(totpClient.verify(any(), eq(VALID_TOTP_CODE))).willReturn(true);
+  }
 
   @Test
   void primaryAccountIncludesFreezeState() throws Exception {
@@ -102,7 +118,7 @@ class AccountsControllerTest {
   }
 
   @Test
-  void accountLinkRequiresMatchingOwnershipAndOtp() throws Exception {
+  void accountLinkRequiresMatchingOwnershipAndTotp() throws Exception {
     mockMvc
       .perform(
         post("/api/v1/accounts/link")
@@ -122,19 +138,18 @@ class AccountsControllerTest {
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.type").value("LINK_ACCOUNT"))
-      .andExpect(jsonPath("$.deliveryTarget").value(""))
+      .andExpect(jsonPath("$.deliveryTarget").value("Authenticator app"))
       .andReturn()
       .getResponse()
       .getContentAsString();
 
     String changeRequestId = com.jayway.jsonpath.JsonPath.read(response, "$.changeRequestId");
-    String otpCode = com.jayway.jsonpath.JsonPath.read(response, "$.demoCode");
 
     mockMvc
       .perform(
         post("/api/v1/accounts/link/" + changeRequestId + "/confirm")
           .contentType(MediaType.APPLICATION_JSON)
-          .content("{\"otpCode\":\"" + otpCode + "\"}")
+          .content("{\"otpCode\":\"" + VALID_TOTP_CODE + "\"}")
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.account.id").value("acc-demo-savings"))
@@ -163,12 +178,11 @@ class AccountsControllerTest {
       .getContentAsString();
 
     String changeRequestId = com.jayway.jsonpath.JsonPath.read(response, "$.changeRequestId");
-    String otpCode = com.jayway.jsonpath.JsonPath.read(response, "$.demoCode");
     String confirmation = mockMvc
       .perform(
         post("/api/v1/accounts/open/" + changeRequestId + "/confirm")
           .contentType(MediaType.APPLICATION_JSON)
-          .content("{\"otpCode\":\"" + otpCode + "\"}")
+          .content("{\"otpCode\":\"" + VALID_TOTP_CODE + "\"}")
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.account.nickname").value("Goal Savings"))
@@ -202,12 +216,11 @@ class AccountsControllerTest {
       .getContentAsString();
 
     String changeRequestId = com.jayway.jsonpath.JsonPath.read(response, "$.changeRequestId");
-    String otpCode = com.jayway.jsonpath.JsonPath.read(response, "$.demoCode");
     mockMvc
       .perform(
         post("/api/v1/accounts/cards/link/" + changeRequestId + "/confirm")
           .contentType(MediaType.APPLICATION_JSON)
-          .content("{\"otpCode\":\"" + otpCode + "\"}")
+          .content("{\"otpCode\":\"" + VALID_TOTP_CODE + "\"}")
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.card.accountId").value("acc-demo-primary"))

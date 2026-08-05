@@ -64,8 +64,11 @@ public class AccountsController {
   }
 
   @PostMapping("/link")
-  public OtpChallengeResponse requestAccountLink(@Valid @RequestBody LinkAccountRequest request) {
-    return accountsService.requestAccountLink(request);
+  public OtpChallengeResponse requestAccountLink(
+    @Valid @RequestBody LinkAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.requestAccountLink(request, callerUserId);
   }
 
   @PostMapping("/link/{changeRequestId}/confirm")
@@ -78,9 +81,10 @@ public class AccountsController {
 
   @PostMapping("/open")
   public OtpChallengeResponse requestAccountOpening(
-    @Valid @RequestBody OpenAccountRequest request
+    @Valid @RequestBody OpenAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestAccountOpening(request);
+    return accountsService.requestAccountOpening(request, callerUserId);
   }
 
   @PostMapping("/open/{changeRequestId}/confirm")
@@ -93,9 +97,10 @@ public class AccountsController {
 
   @PostMapping("/cards/link")
   public OtpChallengeResponse requestCreditCardLink(
-    @Valid @RequestBody LinkCreditCardRequest request
+    @Valid @RequestBody LinkCreditCardRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestCreditCardLink(request);
+    return accountsService.requestCreditCardLink(request, callerUserId);
   }
 
   @PostMapping("/cards/link/{changeRequestId}/confirm")
@@ -139,14 +144,18 @@ public class AccountsController {
   @PostMapping("/{id}/freeze")
   public OtpChallengeResponse requestFreeze(
     @PathVariable String id,
-    @Valid @RequestBody FreezeAccountRequest request
+    @Valid @RequestBody FreezeAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestFreeze(id, request);
+    return accountsService.requestFreeze(id, request, callerUserId);
   }
 
   @PostMapping("/{id}/unfreeze")
-  public OtpChallengeResponse requestUnfreeze(@PathVariable String id) {
-    return accountsService.requestUnfreeze(id);
+  public OtpChallengeResponse requestUnfreeze(
+    @PathVariable String id,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.requestUnfreeze(id, callerUserId);
   }
 
   @PostMapping("/changes/{changeRequestId}/confirm")

@@ -27,10 +27,6 @@ public class PendingPayeeAddition {
   @Column(name = "account_reference", nullable = false, length = 64)
   private String accountReference;
 
-  /** BCrypt digest of the one-time code. The code itself is never persisted (NFR-S4). */
-  @Column(name = "otp_hash", nullable = false, length = 100)
-  private String otpHash;
-
   @Column(name = "expires_at", nullable = false)
   private Instant expiresAt;
 

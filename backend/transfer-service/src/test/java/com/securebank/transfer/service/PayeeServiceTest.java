@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.config.TransferServiceProperties;
 import com.securebank.transfer.dto.AddPayeeRequest;
 import com.securebank.transfer.dto.ConfirmPayeeRequest;
@@ -29,13 +30,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class PayeeServiceTest {
 
   private static final UUID USER_ID = UUID.randomUUID();
+  /** The code the caller's authenticator app is showing in these tests. */
   private static final String KNOWN_CODE = "123456";
   private static final int MAX_ATTEMPTS = 3;
   private static final CallerIdentity CALLER = new CallerIdentity(USER_ID);
@@ -49,7 +49,8 @@ class PayeeServiceTest {
   @Mock
   private PayeeAlertService payeeAlertService;
 
-  private final PasswordEncoder otpEncoder = new BCryptPasswordEncoder();
+  @Mock
+  private TotpClient totpClient;
 
   private PayeeService payeeService;
 
@@ -60,14 +61,14 @@ class PayeeServiceTest {
       null,
       null,
       null,
-      new TransferServiceProperties.Otp(Duration.ofMinutes(5), MAX_ATTEMPTS, true)
+      new TransferServiceProperties.Otp(Duration.ofMinutes(5), MAX_ATTEMPTS)
     );
     payeeService = new PayeeService(
       payeeRepository,
       pendingPayeeAdditionRepository,
-      otpEncoder,
       properties,
-      payeeAlertService
+      payeeAlertService,
+      totpClient
     );
   }
 
@@ -77,7 +78,6 @@ class PayeeServiceTest {
       .ownerUserId(USER_ID)
       .nickname("A. Silva")
       .accountReference("acc-other")
-      .otpHash(otpEncoder.encode(KNOWN_CODE))
       .expiresAt(Instant.now().plusSeconds(300))
       .failedAttempts(0)
       .confirmed(false);
@@ -95,7 +95,7 @@ class PayeeServiceTest {
   }
 
   @Test
-  void requestAddPayee_stagesChallengeAndExposesCodeWhenConfigured() {
+  void requestAddPayee_stagesChallengeWithoutIssuingACode() {
     when(pendingPayeeAdditionRepository.save(any(PendingPayeeAddition.class))).thenAnswer(
       invocation -> invocation.getArgument(0)
     );
@@ -105,8 +105,9 @@ class PayeeServiceTest {
       new AddPayeeRequest("A. Silva", "acc-other")
     );
 
-    assertThat(response.demoCode()).isNotBlank();
-    assertThat(response.demoCode()).hasSize(6);
+    // The code comes from the caller's authenticator app, so nothing is generated or sent.
+    assertThat(response.demoCode()).isNull();
+    assertThat(response.message()).contains("authenticator app");
   }
 
   @Test
@@ -168,6 +169,7 @@ class PayeeServiceTest {
     when(pendingPayeeAdditionRepository.findByIdAndOwnerUserId(change.getId(), USER_ID)).thenReturn(
       Optional.of(change)
     );
+    when(totpClient.verify(USER_ID, KNOWN_CODE)).thenReturn(true);
     when(payeeRepository.save(any(Payee.class))).thenAnswer(invocation ->
       invocation.getArgument(0)
     );

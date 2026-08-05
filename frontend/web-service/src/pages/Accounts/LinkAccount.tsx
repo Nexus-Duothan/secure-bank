@@ -117,8 +117,7 @@ const LinkAccount: React.FC = () => {
         <Flex align="flex-start" gap={10} style={{ margin: '24px 4px 0' }}>
           <LockOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
           <Text style={{ color: token.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
-            The verification code is sent by SMS to the mobile number already registered with this
-            account.
+            You confirm this with the current six digit code from your authenticator app.
           </Text>
         </Flex>
       </div>
