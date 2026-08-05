@@ -16,7 +16,7 @@ spec:
       containers:
         - name: api-gateway
           image: securebank/api-gateway:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           envFrom:
@@ -55,7 +55,7 @@ spec:
       containers:
         - name: auth-service
           image: securebank/auth-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8081
           envFrom:
@@ -94,7 +94,7 @@ spec:
       containers:
         - name: totp-service
           image: securebank/totp-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8082
           envFrom:
@@ -133,7 +133,7 @@ spec:
       containers:
         - name: user-service
           image: securebank/user-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8083
           envFrom:
@@ -172,7 +172,7 @@ spec:
       containers:
         - name: accounts-service
           image: securebank/accounts-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8084
           envFrom:
@@ -211,7 +211,7 @@ spec:
       containers:
         - name: transfer-service
           image: securebank/transfer-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8085
           envFrom:
