@@ -16,11 +16,7 @@ import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import paymentsService from '../../api/paymentsService';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
-
 const { Text, Title } = Typography;
-
-const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
 
 type BillerCategory = 'Electricity' | 'Water' | 'Internet' | 'Mobile';
 
@@ -58,8 +54,8 @@ const PayVendor: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [form] = Form.useForm<PayBillFormValues>();
-  const [fromAccount, setFromAccount] = useState<Account>(MOCK_FROM_ACCOUNT);
-  const [accounts, setAccounts] = useState<Account[]>([MOCK_FROM_ACCOUNT]);
+  const [fromAccount, setFromAccount] = useState<Account | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [category, setCategory] = useState<BillerCategory>('Electricity');
   const [amount, setAmount] = useState<number>(BILLER_PRESETS.Electricity.amount);
   const [submitting, setSubmitting] = useState(false);
@@ -88,7 +84,9 @@ const PayVendor: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    form.setFieldValue('fromAccountId', fromAccount.id);
+    if (fromAccount) {
+      form.setFieldValue('fromAccountId', fromAccount.id);
+    }
   }, [fromAccount, form]);
 
   const applyCategory = (nextCategory: BillerCategory) => {
@@ -184,7 +182,7 @@ const PayVendor: React.FC = () => {
               biller: BILLER_PRESETS.Electricity.biller,
               reference: BILLER_PRESETS.Electricity.reference,
               amount: BILLER_PRESETS.Electricity.amount,
-              fromAccountId: fromAccount.id,
+              fromAccountId: fromAccount?.id,
             }}
             onValuesChange={(changed) => {
               if (typeof changed.amount === 'number') setAmount(changed.amount);
@@ -255,7 +253,7 @@ const PayVendor: React.FC = () => {
           style={{ fontWeight: 600, height: 52, marginTop: 24 }}
           onClick={() => form.submit()}
         >
-          Pay {formatCurrency(fromAccount.currency, amount || 0)}
+          Pay {formatCurrency(fromAccount?.currency || 'USD', amount || 0)}
         </Button>
       </div>
     </div>

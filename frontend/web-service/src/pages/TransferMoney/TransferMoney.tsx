@@ -5,11 +5,7 @@ import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import transferService, { type TransferResponse } from '../../api/transferService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
-
 const { Text, Title } = Typography;
-
-const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
 
 type Step = 'form' | 'review';
 
@@ -30,7 +26,7 @@ const TransferMoney: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [form] = Form.useForm<TransferFormValues>();
-  const [fromAccount, setFromAccount] = useState<Account>(MOCK_FROM_ACCOUNT);
+  const [fromAccount, setFromAccount] = useState<Account | null>(null);
   const [step, setStep] = useState<Step>('form');
   const [quote, setQuote] = useState<TransferResponse | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -66,6 +62,11 @@ const TransferMoney: React.FC = () => {
     setError(null);
     if (!idempotencyKeyRef.current) {
       idempotencyKeyRef.current = crypto.randomUUID();
+    }
+    if (!fromAccount) {
+      setError('An active account is required to make a transfer.');
+      setQuoting(false);
+      return;
     }
     try {
       const response = await transferService.quoteTransfer(
@@ -162,8 +163,8 @@ const TransferMoney: React.FC = () => {
                       color: token.colorTextTertiary,
                     }}
                   >
-                    {fromAccount.nickname} -{' '}
-                    {formatCurrency(fromAccount.currency, fromAccount.balance)}
+                    {fromAccount?.nickname || 'Account'} -{' '}
+                    {formatCurrency(fromAccount?.currency || 'USD', fromAccount?.balance || 0)}
                   </div>
                 </Form.Item>
 
@@ -188,11 +189,11 @@ const TransferMoney: React.FC = () => {
                     style={{ width: '100%' }}
                     controls={false}
                     min={0}
-                    placeholder={`${fromAccount.currency} 0.00`}
+                    placeholder={`${fromAccount?.currency || 'USD'} 0.00`}
                     formatter={(value) =>
                       value === undefined || value === null
                         ? ''
-                        : `${fromAccount.currency} ${value}`
+                        : `${fromAccount?.currency || 'USD'} ${value}`
                     }
                     parser={(value) => {
                       const numeric = Number((value ?? '').replace(/[^0-9.]/g, ''));
@@ -230,7 +231,11 @@ const TransferMoney: React.FC = () => {
                 styles={{ body: { padding: 24 } }}
               >
                 <Flex vertical gap={16}>
-                  <SummaryRow label="From" value={fromAccount.nickname} token={token} />
+                  <SummaryRow
+                    label="From"
+                    value={fromAccount?.nickname || 'Account'}
+                    token={token}
+                  />
                   <SummaryRow label="To" value={quote.toAccount} token={token} />
                   <SummaryRow
                     label="Amount"

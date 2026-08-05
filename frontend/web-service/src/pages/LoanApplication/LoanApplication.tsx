@@ -16,7 +16,6 @@ import { CheckCircleFilled } from '@ant-design/icons';
 import accountsService, { type Account } from '../../api/accountsService';
 import lendingService from '../../api/lendingService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
@@ -56,7 +55,7 @@ const LoanApplication: React.FC = () => {
   const [form] = Form.useForm<LoanAmountFormValues>();
   const [currentStep, setCurrentStep] = useState(0);
   const [applicationId, setApplicationId] = useState<string | null>(null);
-  const [linkedAccount, setLinkedAccount] = useState<Account>(DEMO_PRIMARY_ACCOUNT);
+  const [linkedAccount, setLinkedAccount] = useState<Account | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +77,11 @@ const LoanApplication: React.FC = () => {
   const handleFinishAmountStep = async (values: LoanAmountFormValues) => {
     setSubmitting(true);
     setError(null);
+    if (!linkedAccount) {
+      setError('An active bank account is required to apply for a loan.');
+      setSubmitting(false);
+      return;
+    }
     try {
       const response = await lendingService.applyForLoan({
         ...values,
