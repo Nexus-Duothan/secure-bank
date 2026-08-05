@@ -193,4 +193,31 @@ public class NotificationEventConsumer {
       log.warn("Failed to process payment held event for notification: {}", e.getMessage());
     }
   }
+
+  @KafkaListener(
+    topics = "loans.disbursed.v1",
+    groupId = "${spring.kafka.consumer.group-id:notification-service-group}"
+  )
+  public void handleLoanDisbursed(String message) {
+    try {
+      JsonNode json = objectMapper.readTree(message);
+      String userIdStr = json.path("applicantUserId").asText(json.path("userId").asText(""));
+      String amount = json.path("amount").asText("0");
+
+      if (userIdStr.isEmpty()) return;
+      UUID userId = UUID.fromString(userIdStr);
+
+      notificationService.sendNotification(
+        userId,
+        NotificationType.TRANSACTION_ALERT,
+        NotificationChannel.IN_APP,
+        "Loan Facility Disbursed",
+        String.format("Your loan facility of LKR %s has been approved and disbursed.", amount),
+        null,
+        message
+      );
+    } catch (Exception e) {
+      log.warn("Failed to process loan disbursed event for notification: {}", e.getMessage());
+    }
+  }
 }
