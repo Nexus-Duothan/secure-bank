@@ -8,7 +8,6 @@ import accountsService, {
   type OpenAccountPayload,
 } from '../../api/accountsService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_ACCOUNT_PRODUCTS } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
@@ -25,7 +24,7 @@ const OpenAccount: React.FC = () => {
   const [form] = Form.useForm<OpenAccountPayload>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [products, setProducts] = useState<AccountProduct[]>(DEMO_ACCOUNT_PRODUCTS);
+  const [products, setProducts] = useState<AccountProduct[]>([]);
   const [accountType, setAccountType] = useState<AccountType>('SAVINGS');
   const [productCode, setProductCode] = useState<string | undefined>(undefined);
 
@@ -34,10 +33,10 @@ const OpenAccount: React.FC = () => {
     accountsService
       .getAccountProducts()
       .then((data) => {
-        if (!cancelled && data.length > 0) setProducts(data);
+        if (!cancelled) setProducts(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setProducts([]);
       });
     return () => {
       cancelled = true;
