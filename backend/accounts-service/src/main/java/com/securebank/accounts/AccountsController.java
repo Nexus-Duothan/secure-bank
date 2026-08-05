@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,18 +27,23 @@ public class AccountsController {
   private final AccountsService accountsService;
 
   @GetMapping
-  public List<AccountResponse> getLinkedAccounts() {
-    return accountsService.getLinkedAccounts();
+  public List<AccountResponse> getLinkedAccounts(
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.getLinkedAccounts(callerUserId);
   }
 
   @GetMapping("/primary")
-  public AccountResponse getPrimaryAccount() {
-    return accountsService.getPrimaryAccount();
+  public AccountResponse getPrimaryAccount(
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.getPrimaryAccount(callerUserId);
   }
 
   @GetMapping("/primary/transactions")
   public List<TransactionResponse> getRecentTransactions(
-    @RequestParam(defaultValue = "4") int limit
+    @RequestParam(defaultValue = "4") int limit,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
     return accountsService.getRecentTransactions(limit);
   }

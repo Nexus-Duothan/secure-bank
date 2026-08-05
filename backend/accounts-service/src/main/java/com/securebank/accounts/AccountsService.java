@@ -475,10 +475,18 @@ public class AccountsService {
   }
 
   public AccountResponse getPrimaryAccount() {
+    return getPrimaryAccount(null);
+  }
+
+  public AccountResponse getPrimaryAccount(String callerUserId) {
     return toAccountResponse(primaryAccount);
   }
 
   public List<AccountResponse> getLinkedAccounts() {
+    return getLinkedAccounts(null);
+  }
+
+  public List<AccountResponse> getLinkedAccounts(String callerUserId) {
     return accountsById
       .values()
       .stream()
