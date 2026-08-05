@@ -97,6 +97,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
 ---
 apiVersion: v1
 kind: Service
@@ -109,6 +114,45 @@ spec:
       targetPort: 8082
   selector:
     app: totp-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: securebank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: securebank/user-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: securebank
+spec:
+  ports:
+    - port: 8083
+      targetPort: 8083
+  selector:
+    app: user-service
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -131,6 +175,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8084
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
 ---
 apiVersion: v1
 kind: Service
@@ -165,6 +214,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8085
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
 ---
 apiVersion: v1
 kind: Service
@@ -177,6 +231,84 @@ spec:
       targetPort: 8085
   selector:
     app: transfer-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-service
+  namespace: securebank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-service
+  template:
+    metadata:
+      labels:
+        app: payments-service
+    spec:
+      containers:
+        - name: payments-service
+          image: securebank/payments-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8086
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-service
+  namespace: securebank
+spec:
+  ports:
+    - port: 8086
+      targetPort: 8086
+  selector:
+    app: payments-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lending-service
+  namespace: securebank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lending-service
+  template:
+    metadata:
+      labels:
+        app: lending-service
+    spec:
+      containers:
+        - name: lending-service
+          image: securebank/lending-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8087
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lending-service
+  namespace: securebank
+spec:
+  ports:
+    - port: 8087
+      targetPort: 8087
+  selector:
+    app: lending-service
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -199,6 +331,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8088
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
 ---
 apiVersion: v1
 kind: Service
