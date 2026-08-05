@@ -139,12 +139,19 @@ const OtpVerification: React.FC = () => {
     navigate,
   ]);
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (accountOrProfileChangeFlow) return;
     if (!isFinished) return;
     setOtp('');
     setError(null);
-    restart();
+    try {
+      if (preAuthToken) {
+        await authService.resendOtp(preAuthToken, loginRouteState?.usernameOrEmail);
+      }
+      restart();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to resend verification code'));
+    }
   };
 
   const handleSubmit = async () => {

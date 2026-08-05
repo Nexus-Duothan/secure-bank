@@ -82,6 +82,13 @@ export const authService = {
     publicClient
       .post<AuthTokenResponse>('/login/verify-mfa', payload)
       .then((response) => response.data),
+  resendOtp: (preAuthToken: string, usernameOrEmail?: string) =>
+    publicClient
+      .post<{ success: boolean; message: string }>('/resend-otp', {
+        preAuthToken,
+        usernameOrEmail,
+      })
+      .then((response) => response.data),
   createAccount: (payload: CreateAccountPayload) =>
     publicClient
       .post<CreateAccountResponse>('/register', payload)
