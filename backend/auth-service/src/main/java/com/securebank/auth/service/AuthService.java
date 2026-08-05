@@ -1,5 +1,6 @@
 package com.securebank.auth.service;
 
+import com.securebank.auth.client.TotpClient;
 import com.securebank.auth.dto.*;
 import com.securebank.auth.entity.PasswordResetToken;
 import com.securebank.auth.entity.UserCredential;
@@ -29,6 +30,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider tokenProvider;
   private final LoginSmsAlertService loginSmsAlertService;
+  private final TotpClient totpClient;
 
   @Transactional
   public RegisterResponse register(RegisterRequest request) {
@@ -107,8 +109,8 @@ public class AuthService {
       .findById(userId)
       .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-    // Validate TOTP code (Standard verification simulation / 6-digit TOTP)
-    if (request.getTotpCode() == null || request.getTotpCode().length() != 6) {
+    // Validate TOTP code via totp-service (with fallback)
+    if (!totpClient.verify(userId, request.getTotpCode())) {
       throw new IllegalArgumentException("Invalid 6-digit TOTP code");
     }
 
