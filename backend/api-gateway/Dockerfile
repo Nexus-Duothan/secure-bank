@@ -1,9 +1,12 @@
 FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /build
+RUN apk add --no-cache maven
 COPY pom.xml .
 COPY backend/api-gateway/pom.xml backend/api-gateway/
+RUN mvn dependency:go-offline -f backend/api-gateway/pom.xml || true
+
 COPY backend/api-gateway/src backend/api-gateway/src
-RUN apk add --no-cache maven && mvn package -f backend/api-gateway/pom.xml -DskipTests
+RUN mvn package -f backend/api-gateway/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

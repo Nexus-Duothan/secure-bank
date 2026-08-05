@@ -1,9 +1,12 @@
 FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /build
+RUN apk add --no-cache maven
 COPY pom.xml .
 COPY backend/notification-service/pom.xml backend/notification-service/
+RUN mvn dependency:go-offline -f backend/notification-service/pom.xml || true
+
 COPY backend/notification-service/src backend/notification-service/src
-RUN apk add --no-cache maven && mvn package -f backend/notification-service/pom.xml -DskipTests
+RUN mvn package -f backend/notification-service/pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
