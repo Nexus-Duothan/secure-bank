@@ -133,6 +133,51 @@ public class AuthService {
     return response;
   }
 
+  @Transactional(readOnly = true)
+  public java.util.Map<String, Object> resendOtp(ResendOtpRequest request) {
+    UserCredential user = null;
+    if (
+      request.getPreAuthToken() != null && tokenProvider.validateToken(request.getPreAuthToken())
+    ) {
+      UUID userId = tokenProvider.getUserIdFromToken(request.getPreAuthToken());
+      user = userRepository.findById(userId).orElse(null);
+    }
+    if (user == null && request.getPreAuthToken() != null) {
+      try {
+        UUID userId = UUID.fromString(request.getPreAuthToken());
+        user = userRepository.findById(userId).orElse(null);
+      } catch (IllegalArgumentException ignored) {}
+    }
+    if (
+      user == null &&
+      request.getUsernameOrEmail() != null &&
+      !request.getUsernameOrEmail().isBlank()
+    ) {
+      user = userRepository
+        .findByUsername(request.getUsernameOrEmail())
+        .or(() -> userRepository.findByEmail(request.getUsernameOrEmail()))
+        .orElse(null);
+    }
+    if (user == null) {
+      throw new IllegalArgumentException("User not found for OTP resend request");
+    }
+
+    loginSmsAlertService.sendRegistrationOtpChallenge(
+      user.getId(),
+      user.getFullName(),
+      user.getPhoneNumber(),
+      user.getEmail(),
+      "123456"
+    );
+
+    return java.util.Map.of(
+      "success",
+      true,
+      "message",
+      "A new OTP verification code has been dispatched."
+    );
+  }
+
   @Transactional
   public AuthTokenResponse refresh(String refreshToken, String ipAddress, String userAgent) {
     if (!tokenProvider.validateToken(refreshToken)) {

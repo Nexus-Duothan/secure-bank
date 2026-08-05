@@ -79,6 +79,13 @@ public class AuthController {
     return ResponseEntity.ok(response);
   }
 
+  @PostMapping("/resend-otp")
+  public ResponseEntity<Map<String, Object>> resendOtp(
+    @Valid @RequestBody ResendOtpRequest request
+  ) {
+    return ResponseEntity.ok(authService.resendOtp(request));
+  }
+
   @PostMapping("/refresh")
   public ResponseEntity<AuthTokenResponse> refreshToken(
     @RequestBody Map<String, String> body,
