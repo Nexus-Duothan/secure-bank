@@ -57,6 +57,14 @@ public class AuthService {
 
     UserCredential saved = userRepository.save(user);
 
+    loginSmsAlertService.sendRegistrationOtpChallenge(
+      saved.getId(),
+      saved.getFullName(),
+      saved.getPhoneNumber(),
+      saved.getEmail(),
+      "123456"
+    );
+
     return RegisterResponse.builder()
       .userId(saved.getId())
       .username(saved.getUsername())
