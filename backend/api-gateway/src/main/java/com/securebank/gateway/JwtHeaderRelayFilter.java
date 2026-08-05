@@ -32,7 +32,7 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
 
   private final SecretKey key;
 
-  @Value("${gateway.public-paths:/api/v1/auth/login,/api/v1/auth/register,/actuator/health}")
+  @Value("${gateway.public-paths:/api/v1/auth/**,/actuator/health}")
   private List<String> publicPaths;
 
   public JwtHeaderRelayFilter(@Value("${jwt.secret}") String secret) {
@@ -69,6 +69,7 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
 
     try {
       Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+
       String tokenType = claims.get("type", String.class);
       if (!"ACCESS".equals(tokenType)) {
         return unauthorized(exchange, "Only access tokens can call downstream services");
@@ -76,14 +77,16 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
 
       String userId = claims.getSubject();
       String role = claims.get("role", String.class);
-      requestBuilder.headers(headers -> {
-        if (userId != null) {
-          headers.set(USER_ID_HEADER, userId);
-        }
-        if (role != null && !role.isBlank()) {
-          headers.set(USER_ROLE_HEADER, role);
-        }
-      });
+
+      if (userId == null || userId.isEmpty()) {
+        return unauthorized(exchange, "Token payload missing subject");
+      }
+
+      requestBuilder.header(USER_ID_HEADER, userId);
+      if (role != null) {
+        requestBuilder.header(USER_ROLE_HEADER, role);
+      }
+
       return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
     } catch (JwtException | IllegalArgumentException exception) {
       return unauthorized(exchange, "Invalid or expired access token");
@@ -91,6 +94,9 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
   }
 
   private boolean isPublicPath(String path) {
+    if (path != null && path.startsWith("/api/v1/auth/")) {
+      return true;
+    }
     if (publicPaths == null) return false;
     return publicPaths.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
   }
