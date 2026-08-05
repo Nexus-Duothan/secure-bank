@@ -12,7 +12,6 @@ import {
 import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import BottomNav from '../../components/BottomNav';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 const NAVY = '#0B1B2B';
@@ -56,16 +55,18 @@ const Accounts: React.FC = () => {
       .getAccounts()
       .then((data) => {
         if (cancelled) return;
-        const available = data.length > 0 ? data : [DEMO_PRIMARY_ACCOUNT];
-        const nextSelected = available.some((account) => account.id === selectedId)
-          ? selectedId
-          : available[0].id;
-        accountSelection.setSelectedAccountId(nextSelected);
-        setSelectedId(nextSelected);
+        const available = data || [];
+        if (available.length > 0) {
+          const nextSelected = available.some((account) => account.id === selectedId)
+            ? selectedId
+            : available[0].id;
+          accountSelection.setSelectedAccountId(nextSelected);
+          setSelectedId(nextSelected);
+        }
         setAccounts(available);
       })
       .catch(() => {
-        if (!cancelled) setAccounts([DEMO_PRIMARY_ACCOUNT]);
+        if (!cancelled) setAccounts([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
