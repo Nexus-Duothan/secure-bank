@@ -260,14 +260,6 @@ const OtpVerification: React.FC = () => {
             {accountOrProfileChallenge.message}
           </Text>
         )}
-        {accountOrProfileChangeFlow && accountOrProfileChallenge?.demoCode && (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message={`Demo code: ${accountOrProfileChallenge.demoCode}`}
-          />
-        )}
 
         <div className="otp-boxes">
           <Input.OTP

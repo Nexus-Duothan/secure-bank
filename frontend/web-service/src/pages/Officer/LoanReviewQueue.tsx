@@ -4,7 +4,6 @@ import { PercentageOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import lendingService, { type PendingLoanApplication } from '../../api/lendingService';
-import { DEMO_LOAN_QUEUE } from '../../mocks/demoStaff';
 
 const { Text, Title } = Typography;
 
@@ -29,17 +28,17 @@ const formatDate = (iso: string) =>
  */
 const LoanReviewQueue: React.FC = () => {
   const { token } = theme.useToken();
-  const [queue, setQueue] = useState<PendingLoanApplication[]>(DEMO_LOAN_QUEUE);
+  const [queue, setQueue] = useState<PendingLoanApplication[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     lendingService
       .getPendingApplications()
       .then((data) => {
-        if (!cancelled) setQueue(data);
+        if (!cancelled) setQueue(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setQueue([]);
       });
     return () => {
       cancelled = true;

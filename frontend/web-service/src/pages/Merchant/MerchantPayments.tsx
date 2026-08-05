@@ -7,7 +7,6 @@ import paymentsService, {
   type MerchantPayment,
   type MerchantPaymentStatus,
 } from '../../api/paymentsService';
-import { DEMO_MERCHANT_PAYMENTS } from '../../mocks/demoStaff';
 
 const { Text } = Typography;
 
@@ -38,7 +37,7 @@ const formatDateTime = (iso: string) =>
  */
 const MerchantPayments: React.FC = () => {
   const { token } = theme.useToken();
-  const [payments, setPayments] = useState<MerchantPayment[]>(DEMO_MERCHANT_PAYMENTS);
+  const [payments, setPayments] = useState<MerchantPayment[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | MerchantPaymentStatus>('ALL');
 
@@ -47,10 +46,10 @@ const MerchantPayments: React.FC = () => {
     paymentsService
       .getMerchantPayments()
       .then((data) => {
-        if (!cancelled) setPayments(data);
+        if (!cancelled) setPayments(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setPayments([]);
       });
     return () => {
       cancelled = true;

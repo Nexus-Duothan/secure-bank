@@ -12,7 +12,6 @@ import StaffLayout from '../../components/StaffLayout';
 import { ADMIN_NAV } from '../../components/staffNavs';
 import adminService from '../../api/adminService';
 import auditService from '../../api/auditService';
-import { DEMO_ADMIN_USERS, DEMO_AUDIT_JOURNAL } from '../../mocks/demoStaff';
 import type { UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
@@ -34,10 +33,8 @@ const PLATFORM_SERVICES = [
 const AdminDashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [users, setUsers] = useState<UserProfile[]>(DEMO_ADMIN_USERS);
-  const [flaggedCount, setFlaggedCount] = useState<number>(
-    DEMO_AUDIT_JOURNAL.filter((entry) => entry.flagged).length
-  );
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [flaggedCount, setFlaggedCount] = useState<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,19 +42,19 @@ const AdminDashboard: React.FC = () => {
     adminService
       .getUsers()
       .then((data) => {
-        if (!cancelled) setUsers(data);
+        if (!cancelled) setUsers(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setUsers([]);
       });
 
     auditService
       .getTransactions()
       .then((data) => {
-        if (!cancelled) setFlaggedCount(data.filter((entry) => entry.flagged).length);
+        if (!cancelled) setFlaggedCount((data || []).filter((entry) => entry.flagged).length);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setFlaggedCount(0);
       });
 
     return () => {

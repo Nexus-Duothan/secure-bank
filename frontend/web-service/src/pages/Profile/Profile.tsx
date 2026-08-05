@@ -35,7 +35,6 @@ import tokenStorage from '../../api/tokenStorage';
 import sessionUser from '../../api/sessionUser';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
-import { DEMO_PRIMARY_ACCOUNT, DEMO_PROFILE } from '../../mocks/demoCustomer';
 import { getProfilePhoto, saveProfilePhoto } from '../../utils/profilePhoto';
 
 const { Text, Title } = Typography;
@@ -77,8 +76,21 @@ interface DeviceRowProps {
   onRevoke: (deviceId: string) => void;
 }
 
-const MOCK_PROFILE: UserProfile = DEMO_PROFILE;
-const MOCK_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
+const DEFAULT_USER_PROFILE: UserProfile = {
+  id: '',
+  fullName: 'User Profile',
+  email: '',
+  phoneNumber: '',
+  addressLine: '',
+  city: '',
+  country: '',
+  language: 'English',
+  role: 'CUSTOMER',
+  status: 'ACTIVE',
+  idVerified: true,
+  notificationPreferences: { email: true, sms: true, push: true },
+  linkedDevices: [],
+};
 
 const getInitials = (name: string) =>
   name
@@ -248,14 +260,14 @@ const Profile: React.FC = () => {
   const [notificationForm] = Form.useForm<NotificationPreferences>();
   const [languageForm] = Form.useForm<{ language: string }>();
   const [freezeForm] = Form.useForm<{ reason: string }>();
-  const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
-  const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
+  const [account, setAccount] = useState<Account | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
   const [passwordResetSubmitting, setPasswordResetSubmitting] = useState(false);
@@ -322,14 +334,9 @@ const Profile: React.FC = () => {
       })
       .catch((error) => {
         if (!cancelled) {
-          setProfilePhoto(getProfilePhoto(MOCK_PROFILE.id));
           setProfileLoadError(
-            getApiErrorMessage(
-              error,
-              'Live profile details are unavailable right now. This screen is showing demo data.'
-            )
+            getApiErrorMessage(error, 'Unable to load live profile details right now.')
           );
-          applyProfileToForms(MOCK_PROFILE);
         }
       })
       .finally(() => {
@@ -348,11 +355,9 @@ const Profile: React.FC = () => {
       })
       .catch((error) => {
         if (!cancelled) {
+          setAccount(null);
           setAccountLoadError(
-            getApiErrorMessage(
-              error,
-              'Live account details are unavailable right now. This screen is showing demo account data.'
-            )
+            getApiErrorMessage(error, 'Live account details are unavailable right now.')
           );
         }
       });
@@ -510,6 +515,7 @@ const Profile: React.FC = () => {
   };
 
   const handleFreezeSubmit = async () => {
+    if (!account) return;
     const values = await freezeForm.validateFields();
     await requestOtpFlow(
       accountsService.requestAccountFreeze(account.id, values.reason?.trim() || undefined),
@@ -523,6 +529,7 @@ const Profile: React.FC = () => {
   };
 
   const handleFreezeToggle = async () => {
+    if (!account) return;
     if (account.frozen) {
       await requestOtpFlow(
         accountsService.requestAccountUnfreeze(account.id),
@@ -616,9 +623,9 @@ const Profile: React.FC = () => {
         },
         {
           key: 'freeze',
-          label: account.frozen ? 'Reactivate account' : 'Freeze account',
-          trailing: account.frozen ? 'Reactivate' : 'Protect',
-          onClick: accountLoadError ? undefined : handleFreezeToggle,
+          label: account?.frozen ? 'Reactivate account' : 'Freeze account',
+          trailing: account?.frozen ? 'Reactivate' : 'Protect',
+          onClick: accountLoadError || !account ? undefined : handleFreezeToggle,
         },
       ],
     },
@@ -671,7 +678,7 @@ const Profile: React.FC = () => {
         )}
         {children}
       </div>
-      <BottomNav accountsPath={`/accounts/${account.id}`} />
+      <BottomNav accountsPath={account ? `/accounts/${account.id}` : '/accounts'} />
     </div>
   );
 
@@ -1081,29 +1088,32 @@ const Profile: React.FC = () => {
 
         <TrustIndicator
           text={
-            account.frozen
+            account?.frozen
               ? 'This account is temporarily frozen for your protection.'
               : profile.idVerified
                 ? 'Your identity is verified and protected.'
-                : 'Identity verification is still in progress.'
+                : 'Identity verification is pending review.'
           }
         />
 
         <div
           style={{
-            background: NAVY,
-            borderRadius: 20,
-            padding: '24px 24px 20px',
-            margin: '24px 0',
+            marginTop: 20,
+            marginBottom: 24,
+            padding: 20,
+            borderRadius: 16,
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorder}`,
           }}
         >
           <Text
-            className="font-display"
             style={{
               display: 'block',
-              color: '#FFFFFF',
-              fontSize: 18,
+              fontSize: 12,
               fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: token.colorTextTertiary,
               marginBottom: 18,
             }}
           >
@@ -1112,7 +1122,7 @@ const Profile: React.FC = () => {
           <Flex vertical gap={16}>
             <SecurityStatusRow
               label="Account status"
-              value={account.frozen ? 'Frozen' : account.status}
+              value={account ? (account.frozen ? 'Frozen' : account.status) : 'Active'}
             />
             <SecurityStatusRow label="Two-factor authentication" value="Active" />
             <SecurityStatusRow
@@ -1197,7 +1207,7 @@ const Profile: React.FC = () => {
         </Flex>
       </div>
 
-      <BottomNav accountsPath={`/accounts/${account.id}`} />
+      <BottomNav accountsPath={account ? `/accounts/${account.id}` : '/accounts'} />
 
       <Modal
         open={freezeModalOpen}

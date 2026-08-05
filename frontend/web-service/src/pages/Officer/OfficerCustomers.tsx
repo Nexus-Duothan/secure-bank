@@ -4,7 +4,6 @@ import { SearchOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import adminService from '../../api/adminService';
-import { DEMO_ADMIN_USERS } from '../../mocks/demoStaff';
 import type { UserProfile, UserStatus } from '../../types';
 
 const { Text } = Typography;
@@ -31,7 +30,7 @@ const getInitials = (name: string) =>
  */
 const OfficerCustomers: React.FC = () => {
   const { token } = theme.useToken();
-  const [users, setUsers] = useState<UserProfile[]>(DEMO_ADMIN_USERS);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<UserProfile | null>(null);
 
@@ -40,10 +39,10 @@ const OfficerCustomers: React.FC = () => {
     adminService
       .getUsers()
       .then((data) => {
-        if (!cancelled) setUsers(data);
+        if (!cancelled) setUsers(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setUsers([]);
       });
     return () => {
       cancelled = true;

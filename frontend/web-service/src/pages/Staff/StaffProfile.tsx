@@ -23,18 +23,14 @@ import userService from '../../api/userService';
 import authService from '../../api/authService';
 import sessionUser, { homePathForRole } from '../../api/sessionUser';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_ADMIN_USERS } from '../../mocks/demoStaff';
 import type { NotificationPreferences, Role, UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
 
-const PORTAL_META: Record<
-  Exclude<Role, 'CUSTOMER'>,
-  { nav: StaffNavItem[]; roleLabel: string; demoUserId: string }
-> = {
-  ADMIN: { nav: ADMIN_NAV, roleLabel: 'ADMIN', demoUserId: 'usr-demo-005' },
-  BANK_OFFICER: { nav: OFFICER_NAV, roleLabel: 'BANK OFFICER', demoUserId: 'usr-demo-004' },
-  MERCHANT: { nav: MERCHANT_NAV, roleLabel: 'MERCHANT', demoUserId: 'usr-demo-003' },
+const PORTAL_META: Record<Exclude<Role, 'CUSTOMER'>, { nav: StaffNavItem[]; roleLabel: string }> = {
+  ADMIN: { nav: ADMIN_NAV, roleLabel: 'ADMIN' },
+  BANK_OFFICER: { nav: OFFICER_NAV, roleLabel: 'BANK OFFICER' },
+  MERCHANT: { nav: MERCHANT_NAV, roleLabel: 'MERCHANT' },
 };
 
 interface PersonalDetailsFormValues {
@@ -52,12 +48,28 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-/**
- * Own profile for bank-side users. Every security-critical edit — name, email,
- * mobile number, notification alerts — is staged by the backend and only lands
- * after the staff member confirms a one-time code (FR-04, FR-07). Password
- * changes go through the MFA-protected reset flow (FR-06).
- */
+const DEFAULT_PREFS: NotificationPreferences = {
+  email: true,
+  sms: true,
+  push: true,
+};
+
+const DEFAULT_STAFF_PROFILE: UserProfile = {
+  id: '',
+  fullName: 'Bank Staff',
+  email: '',
+  phoneNumber: '',
+  addressLine: '',
+  city: '',
+  country: '',
+  language: 'English',
+  role: 'ADMIN',
+  status: 'ACTIVE',
+  idVerified: true,
+  notificationPreferences: DEFAULT_PREFS,
+  linkedDevices: [],
+};
+
 const StaffProfile: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -71,13 +83,10 @@ const StaffProfile: React.FC = () => {
   const meta = PORTAL_META[role];
   const profilePath = `${homePathForRole(role)}/profile`;
 
-  const demoProfile =
-    DEMO_ADMIN_USERS.find((user) => user.id === meta.demoUserId) ?? DEMO_ADMIN_USERS[0];
-  const [profile, setProfile] = useState<UserProfile>(demoProfile);
-  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_STAFF_PROFILE);
   const [editOpen, setEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [prefs, setPrefs] = useState<NotificationPreferences>(demoProfile.notificationPreferences);
+  const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFS);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
@@ -97,11 +106,12 @@ const StaffProfile: React.FC = () => {
         if (!cancelled) {
           setProfile(data);
           setPrefs(data.notificationPreferences);
-          setUsingDemoData(false);
         }
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) {
+          setProfile(DEFAULT_STAFF_PROFILE);
+        }
       });
     return () => {
       cancelled = true;
@@ -114,11 +124,6 @@ const StaffProfile: React.FC = () => {
     prefs.push !== profile.notificationPreferences.push;
 
   const handleEditSubmit = async (values: PersonalDetailsFormValues) => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change real details (OTP required).');
-      setEditOpen(false);
-      return;
-    }
     setSubmitting(true);
     try {
       const challenge = await userService.requestProfileUpdate(values);
@@ -138,10 +143,6 @@ const StaffProfile: React.FC = () => {
   };
 
   const handleSavePrefs = async () => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change real alerts (OTP required).');
-      return;
-    }
     setSavingPrefs(true);
     try {
       const challenge = await userService.requestNotificationPreferencesUpdate(prefs);
@@ -161,10 +162,6 @@ const StaffProfile: React.FC = () => {
   };
 
   const handlePasswordChange = async () => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change your password.');
-      return;
-    }
     setPasswordSubmitting(true);
     try {
       const response = await authService.requestPasswordReset(profile.email);

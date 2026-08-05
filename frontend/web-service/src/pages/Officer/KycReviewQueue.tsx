@@ -4,7 +4,6 @@ import { IdcardOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import kycService, { type KycApplication } from '../../api/kycService';
-import { DEMO_KYC_QUEUE } from '../../mocks/demoStaff';
 
 const { Text, Title } = Typography;
 
@@ -23,17 +22,17 @@ const formatDate = (iso: string) =>
  */
 const KycReviewQueue: React.FC = () => {
   const { token } = theme.useToken();
-  const [queue, setQueue] = useState<KycApplication[]>(DEMO_KYC_QUEUE);
+  const [queue, setQueue] = useState<KycApplication[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     kycService
       .getPendingApplications()
       .then((data) => {
-        if (!cancelled) setQueue(data);
+        if (!cancelled) setQueue(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setQueue([]);
       });
     return () => {
       cancelled = true;

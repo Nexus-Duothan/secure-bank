@@ -4,7 +4,6 @@ import { FlagOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import auditService, { type AuditTransaction } from '../../api/auditService';
-import { DEMO_AUDIT_JOURNAL } from '../../mocks/demoStaff';
 
 const { Text, Title } = Typography;
 
@@ -21,19 +20,17 @@ const formatAmount = (value: number, currency: string) =>
  */
 const FlaggedTransactions: React.FC = () => {
   const { token } = theme.useToken();
-  const [flagged, setFlagged] = useState<AuditTransaction[]>(
-    DEMO_AUDIT_JOURNAL.filter((entry) => entry.flagged)
-  );
+  const [flagged, setFlagged] = useState<AuditTransaction[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     auditService
       .getTransactions()
       .then((data) => {
-        if (!cancelled) setFlagged(data.filter((entry) => entry.flagged));
+        if (!cancelled) setFlagged((data || []).filter((entry) => entry.flagged));
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setFlagged([]);
       });
     return () => {
       cancelled = true;
