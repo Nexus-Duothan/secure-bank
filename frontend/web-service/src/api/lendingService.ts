@@ -27,6 +27,22 @@ export interface LoanApplicationResponse {
   createdAt: string;
 }
 
+export interface PendingLoanApplication {
+  id: string;
+  applicantName?: string;
+  applicantUserId?: string;
+  applicantId?: string;
+  purpose: string;
+  currency: string;
+  amount: number;
+  termMonths: number;
+  estimatedRate?: number;
+  annualInterestRate?: number;
+  status: ApplicationStatus;
+  submittedAt: string;
+  createdAt?: string;
+}
+
 export interface LoanDetail {
   id: string;
   applicationId: string;
@@ -66,6 +82,8 @@ export const lendingService = {
     client.get<LoanApplicationResponse>(`/applications/${id}`).then((response) => response.data),
   listApplications: () =>
     client.get<LoanApplicationResponse[]>('/applications').then((response) => response.data),
+  getPendingApplications: () =>
+    client.get<PendingLoanApplication[]>('/officer/pending').then((response) => response.data),
   getLoanDetails: (id: string) =>
     client.get<LoanDetail>(`/${id}`).then((response) => response.data),
   listLoans: () => client.get<LoanDetail[]>('').then((response) => response.data),
