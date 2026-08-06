@@ -95,6 +95,8 @@ ROLES=(
     "roles/cloudbuild.builds.editor"
     "roles/storage.admin"
     "roles/iam.serviceAccountUser"
+    "roles/logging.viewer"
+    "roles/viewer"
 )
 
 for ROLE in "${ROLES[@]}"; do

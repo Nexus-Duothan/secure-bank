@@ -41,10 +41,28 @@ jobs:
 
       - name: Build & Push Images via GCP Cloud Build
         run: |
-          gcloud builds submit \
+          BUILD_ID=$(gcloud builds submit \
             --config=cloudbuild.yaml \
             --substitutions=_LOCATION=${{ env.GCP_REGION }},_REPOSITORY=${{ env.GCP_REPOSITORY }},SHORT_SHA=${{ github.sha }} \
-            .
+            --async \
+            --format="value(id)" \
+            .)
+
+          echo "🚀 Cloud Build submitted successfully! Build ID: ${BUILD_ID}"
+          echo "⏳ Waiting for Cloud Build completion..."
+
+          while true; do
+            STATUS=$(gcloud builds describe "${BUILD_ID}" --format="value(status)")
+            echo "Current Build Status: ${STATUS}"
+            if [ "${STATUS}" = "SUCCESS" ]; then
+              echo "✅ Cloud Build ${BUILD_ID} completed successfully!"
+              break
+            elif [ "${STATUS}" = "FAILURE" ] || [ "${STATUS}" = "CANCELLED" ] || [ "${STATUS}" = "TIMEOUT" ]; then
+              echo "❌ Cloud Build ${BUILD_ID} failed with status: ${STATUS}"
+              exit 1
+            fi
+            sleep 15
+          done
 
       - name: Authenticate GKE kubectl
         uses: google-github-actions/get-gke-credentials@v2
