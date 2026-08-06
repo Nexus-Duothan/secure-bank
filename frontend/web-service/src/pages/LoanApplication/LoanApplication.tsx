@@ -1,21 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Button,
   Card,
+  Empty,
   Flex,
   Form,
   InputNumber,
   Select,
+  Spin,
   Steps,
+  Tag,
   Typography,
   theme,
 } from 'antd';
-import { CheckCircleFilled } from '@ant-design/icons';
+import { CheckCircleFilled, RightOutlined } from '@ant-design/icons';
 import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
-import lendingService from '../../api/lendingService';
+import lendingService, {
+  type ApplicationStatus,
+  type LoanApplicationResponse,
+} from '../../api/lendingService';
 import { getApiErrorMessage } from '../../api/apiError';
 import BottomNav from '../../components/BottomNav';
 import { currencyOf, formatMoney } from '../../utils/currency';
@@ -52,6 +58,24 @@ const fieldLabel = (text: string, color: string) => (
   <span style={{ fontWeight: 600, fontSize: 13, color }}>{text}</span>
 );
 
+/**
+ * How each application state reads to the customer. DISBURSED is the end of a successful
+ * application - the money is already in their account - so it says so rather than "disbursed".
+ */
+const STATUS_PRESENTATION: Record<
+  ApplicationStatus,
+  { label: string; color: string; detail: string }
+> = {
+  SUBMITTED: { label: 'Pending', color: 'gold', detail: 'Waiting to be picked up for review.' },
+  UNDER_REVIEW: { label: 'Pending', color: 'gold', detail: 'A bank officer is reviewing this.' },
+  APPROVED: { label: 'Approved', color: 'green', detail: 'Approved. Paying out to your account.' },
+  DISBURSED: { label: 'Approved', color: 'green', detail: 'Paid into your account.' },
+  REJECTED: { label: 'Rejected', color: 'red', detail: 'This application was declined.' },
+};
+
+const formatApplicationDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
 const LoanApplication: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -61,8 +85,24 @@ const LoanApplication: React.FC = () => {
   const [linkedAccount, setLinkedAccount] = useState<Account | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [applications, setApplications] = useState<LoanApplicationResponse[]>([]);
+  const [loadingApplications, setLoadingApplications] = useState(true);
   // Fixed by the account the loan is disbursed to; the customer only types the amount.
   const accountCurrency = currencyOf(linkedAccount);
+
+  /** Re-read after applying, so a new application shows up in the history straight away. */
+  const loadApplications = useCallback(() => {
+    setLoadingApplications(true);
+    return lendingService
+      .listApplications()
+      .then((data) => setApplications(data ?? []))
+      .catch(() => setApplications([]))
+      .finally(() => setLoadingApplications(false));
+  }, []);
+
+  useEffect(() => {
+    void loadApplications();
+  }, [loadApplications]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +141,7 @@ const LoanApplication: React.FC = () => {
       });
       setApplicationId(response.id);
       setCurrentStep(1);
+      void loadApplications();
     } catch (err) {
       setError(
         getApiErrorMessage(
@@ -256,6 +297,94 @@ const LoanApplication: React.FC = () => {
             >
               Continue to details
             </Button>
+
+            <Title
+              level={5}
+              className="font-display"
+              style={{ marginTop: 36, marginBottom: 12, color: token.colorText, fontWeight: 600 }}
+            >
+              Your applications
+            </Title>
+
+            {loadingApplications ? (
+              <Flex justify="center" style={{ padding: '24px 0' }}>
+                <Spin />
+              </Flex>
+            ) : applications.length === 0 ? (
+              <Card styles={{ body: { padding: 20 } }}>
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <Text style={{ color: token.colorTextSecondary, fontSize: 13 }}>
+                      You have not applied for a loan yet.
+                    </Text>
+                  }
+                />
+              </Card>
+            ) : (
+              <Flex vertical gap={12}>
+                {applications.map((application) => {
+                  const presentation = STATUS_PRESENTATION[application.status];
+                  // Only a disbursed application has a loan to open a schedule for.
+                  const openable = application.status === 'DISBURSED' && application.loanId;
+                  return (
+                    <Card
+                      key={application.id}
+                      styles={{ body: { padding: 16 } }}
+                      style={{
+                        cursor: openable ? 'pointer' : 'default',
+                        boxShadow: '0 4px 12px rgba(11, 27, 43, 0.04)',
+                      }}
+                      onClick={
+                        openable
+                          ? () => navigate(`/loans/${application.loanId}/repayments`)
+                          : undefined
+                      }
+                    >
+                      <Flex justify="space-between" align="flex-start" gap={12}>
+                        <div style={{ minWidth: 0 }}>
+                          <Flex align="center" gap={8} style={{ marginBottom: 4 }}>
+                            <Text style={{ fontWeight: 600, fontSize: 15 }}>
+                              {formatMoney(application.amount, accountCurrency)}
+                            </Text>
+                            <Tag color={presentation.color} style={{ marginInlineEnd: 0 }}>
+                              {presentation.label}
+                            </Tag>
+                          </Flex>
+                          <Text
+                            style={{
+                              display: 'block',
+                              fontSize: 12,
+                              color: token.colorTextSecondary,
+                            }}
+                          >
+                            {application.termMonths} months ·{' '}
+                            {formatApplicationDate(application.createdAt)}
+                          </Text>
+                          <Text
+                            style={{
+                              display: 'block',
+                              marginTop: 6,
+                              fontSize: 12,
+                              color: token.colorTextTertiary,
+                            }}
+                          >
+                            {application.status === 'REJECTED' && application.rejectionReason
+                              ? application.rejectionReason
+                              : presentation.detail}
+                          </Text>
+                        </div>
+                        {openable && (
+                          <RightOutlined
+                            style={{ color: token.colorTextTertiary, fontSize: 12, marginTop: 4 }}
+                          />
+                        )}
+                      </Flex>
+                    </Card>
+                  );
+                })}
+              </Flex>
+            )}
           </>
         )}
 

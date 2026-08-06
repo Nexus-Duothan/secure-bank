@@ -2,6 +2,7 @@ package com.securebank.user.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securebank.user.client.CredentialAccessClient;
 import com.securebank.user.client.TotpClient;
 import com.securebank.user.config.UserServiceProperties;
 import com.securebank.user.dto.AdminRoleChangePayload;
@@ -15,6 +16,7 @@ import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.ProfileUpdateRequest;
 import com.securebank.user.dto.ProvisionProfileRequest;
 import com.securebank.user.dto.RoleUpdateRequest;
+import com.securebank.user.dto.ServiceHealthResponse;
 import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserDeviceResponse;
 import com.securebank.user.dto.UserProfileResponse;
@@ -63,6 +65,8 @@ public class UserService {
   private final UserServiceProperties properties;
   private final UserSecurityAlertService userSecurityAlertService;
   private final TotpClient totpClient;
+  private final CredentialAccessClient credentialAccessClient;
+  private final ServiceHealthProbe serviceHealthProbe;
 
   // --------------------------------------------------------------------
   // Self-service profile (FR-07)
@@ -201,6 +205,28 @@ public class UserService {
     return toProfileResponse(findUser(userId));
   }
 
+  /**
+   * The measured state of every platform service. Nothing is cached: each call probes the services
+   * so the panel cannot claim a service is up without having just checked.
+   */
+  @Transactional(readOnly = true)
+  public List<ServiceHealthResponse> getSystemHealth(CallerIdentity caller) {
+    caller.requireAnyRole(Role.ADMIN, Role.BANK_OFFICER);
+    return serviceHealthProbe.checkAll();
+  }
+
+  /**
+   * Mirrors a status auth-service has already decided (a KYC outcome) onto the profile. There is no
+   * caller-role check because this is reached only over the internal, un-published route, and no
+   * push back to auth-service either - it is the one that told us.
+   */
+  @Transactional
+  public UserProfileResponse syncProfileStatus(UUID userId, UserStatus status) {
+    UserProfile profile = findUser(userId);
+    applyUserStatus(profile, status);
+    return toProfileResponse(userProfileRepository.save(profile));
+  }
+
   @Transactional
   public UserProfileResponse updateRole(
     CallerIdentity caller,
@@ -215,7 +241,11 @@ public class UserService {
     }
     UserProfile profile = findUser(userId);
     profile.setRole(request.role());
-    return toProfileResponse(userProfileRepository.save(profile));
+    UserProfile saved = userProfileRepository.save(profile);
+    // The profile row is only the display copy: sign-in reads auth-service, so push it there too
+    // or the new role never takes effect.
+    credentialAccessClient.updateAccess(userId, null, request.role());
+    return toProfileResponse(saved);
   }
 
   @Transactional
@@ -227,7 +257,10 @@ public class UserService {
     caller.requireAnyRole(Role.ADMIN, Role.BANK_OFFICER);
     UserProfile profile = findUser(userId);
     applyUserStatus(profile, request.status());
-    return toProfileResponse(userProfileRepository.save(profile));
+    UserProfile saved = userProfileRepository.save(profile);
+    // Same here: suspending someone only locks them out once auth-service knows about it.
+    credentialAccessClient.updateAccess(userId, request.status(), null);
+    return toProfileResponse(saved);
   }
 
   /**

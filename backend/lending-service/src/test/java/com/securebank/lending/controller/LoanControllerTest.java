@@ -15,6 +15,7 @@ import com.securebank.lending.repository.LoanRepository;
 import com.securebank.lending.security.JwtTokenProvider;
 import java.math.BigDecimal;
 import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -218,9 +219,67 @@ class LoanControllerTest {
   }
 
   @Test
+  void approvingAnApplicationPaysThePrincipalIntoTheBorrowersAccount() throws Exception {
+    String applicationId = submitApplication();
+    BigDecimal before = FakeAccountsClient.balanceOf(ACCOUNT_ID);
+
+    mockMvc
+      .perform(
+        post("/api/v1/loans/officer/" + applicationId + "/review")
+          .header("Authorization", "Bearer " + officerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null, "123456"))
+          )
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.status").value("DISBURSED"));
+
+    // The whole point of an approval: the borrower is better off by the principal.
+    Assertions.assertThat(FakeAccountsClient.balanceOf(ACCOUNT_ID)).isEqualByComparingTo(
+      before.add(new BigDecimal("120000"))
+    );
+
+    // And the customer can see the outcome in their own application list.
+    mockMvc
+      .perform(get("/api/v1/loans/applications").header("Authorization", "Bearer " + customerToken))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$[0].id").value(applicationId))
+      .andExpect(jsonPath("$[0].status").value("DISBURSED"))
+      .andExpect(jsonPath("$[0].loanId").exists());
+  }
+
+  @Test
+  void aRejectedApplicationPaysNothingAndTellsTheCustomerWhy() throws Exception {
+    String applicationId = submitApplication();
+    BigDecimal before = FakeAccountsClient.balanceOf(ACCOUNT_ID);
+
+    mockMvc
+      .perform(
+        post("/api/v1/loans/officer/" + applicationId + "/review")
+          .header("Authorization", "Bearer " + officerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              new LoanApplicationReviewRequest(false, "Income could not be verified", "123456")
+            )
+          )
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.status").value("REJECTED"));
+
+    Assertions.assertThat(FakeAccountsClient.balanceOf(ACCOUNT_ID)).isEqualByComparingTo(before);
+
+    mockMvc
+      .perform(get("/api/v1/loans/applications").header("Authorization", "Bearer " + customerToken))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$[0].status").value("REJECTED"))
+      .andExpect(jsonPath("$[0].rejectionReason").value("Income could not be verified"));
+  }
+
+  @Test
   void payNow_failsInstallment_whenBalanceIsInsufficient() throws Exception {
     String applicationId = submitApplication();
-    FakeAccountsClient.setBalance(ACCOUNT_ID, new BigDecimal("10"));
 
     MvcResult reviewResult = mockMvc
       .perform(
@@ -237,6 +296,10 @@ class LoanControllerTest {
       .readTree(reviewResult.getResponse().getContentAsString())
       .get("loanId")
       .asText();
+
+    // Drained after the loan landed - the borrower has spent it and cannot cover the first
+    // installment. Setting this before approval would only be undone by the disbursement.
+    FakeAccountsClient.setBalance(ACCOUNT_ID, new BigDecimal("10"));
 
     mockMvc
       .perform(

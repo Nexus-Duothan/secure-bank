@@ -24,18 +24,16 @@ type BillerCategory = 'Electricity' | 'Water' | 'Internet' | 'Mobile';
 
 const BILLER_CATEGORIES: BillerCategory[] = ['Electricity', 'Water', 'Internet', 'Mobile'];
 
-const BILLER_PRESETS: Record<
-  BillerCategory,
-  { biller: string; reference: string; amount: number }
-> = {
-  Electricity: { biller: 'Ceylon Electricity Board', reference: '204 883 190', amount: 6120.0 },
-  Water: {
-    biller: 'National Water Supply & Drainage Board',
-    reference: '118 402 771',
-    amount: 2340.5,
-  },
-  Internet: { biller: 'SLT Fiber', reference: 'SLT-88213904', amount: 4500.0 },
-  Mobile: { biller: 'Dialog Axiata', reference: '077 123 4567', amount: 1250.0 },
+/**
+ * Only a hint for the biller field, so picking a category saves typing a well known name. There
+ * is deliberately no suggested amount or reference: what a bill comes to is the customer's own
+ * figure off their bill, and pre-filling it invites paying a number the bank made up.
+ */
+const BILLER_NAME_HINTS: Record<BillerCategory, string> = {
+  Electricity: 'Ceylon Electricity Board',
+  Water: 'National Water Supply & Drainage Board',
+  Internet: 'SLT Fiber',
+  Mobile: 'Dialog Axiata',
 };
 
 interface PayBillFormValues {
@@ -54,7 +52,7 @@ const PayVendor: React.FC = () => {
   const [form] = Form.useForm<PayBillFormValues>();
   const [fromAccount, setFromAccount] = useState<Account | null>(null);
   const [category, setCategory] = useState<BillerCategory>('Electricity');
-  const [amount, setAmount] = useState<number>(BILLER_PRESETS.Electricity.amount);
+  const [amount, setAmount] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<PayBillFormValues | null>(null);
   const [totpCode, setTotpCode] = useState('');
@@ -85,13 +83,8 @@ const PayVendor: React.FC = () => {
 
   const applyCategory = (nextCategory: BillerCategory) => {
     setCategory(nextCategory);
-    const preset = BILLER_PRESETS[nextCategory];
-    form.setFieldsValue({
-      biller: preset.biller,
-      reference: preset.reference,
-      amount: preset.amount,
-    });
-    setAmount(preset.amount);
+    // Fills the biller name only; the reference and amount stay whatever the customer entered.
+    form.setFieldValue('biller', BILLER_NAME_HINTS[nextCategory]);
   };
 
   const handleFinish = (values: PayBillFormValues) => {
@@ -180,13 +173,11 @@ const PayVendor: React.FC = () => {
             colon={false}
             requiredMark={false}
             disabled={submitting}
-            initialValues={{
-              biller: BILLER_PRESETS.Electricity.biller,
-              reference: BILLER_PRESETS.Electricity.reference,
-              amount: BILLER_PRESETS.Electricity.amount,
-            }}
+            initialValues={{ biller: BILLER_NAME_HINTS.Electricity }}
             onValuesChange={(changed) => {
-              if (typeof changed.amount === 'number') setAmount(changed.amount);
+              if ('amount' in changed) {
+                setAmount(typeof changed.amount === 'number' ? changed.amount : null);
+              }
             }}
             onFinish={handleFinish}
           >
@@ -252,7 +243,7 @@ const PayVendor: React.FC = () => {
           style={{ fontWeight: 600, height: 52, marginTop: 24 }}
           onClick={() => form.submit()}
         >
-          Pay {formatMoney(amount || 0, accountCurrency)}
+          {amount && amount > 0 ? `Pay ${formatMoney(amount, accountCurrency)}` : 'Pay bill'}
         </Button>
 
         <Modal

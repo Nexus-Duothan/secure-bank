@@ -3,6 +3,7 @@ package com.securebank.user.controller;
 import com.securebank.user.dto.ConfirmChangeRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.RoleUpdateRequest;
+import com.securebank.user.dto.ServiceHealthResponse;
 import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserProfileResponse;
 import com.securebank.user.security.CallerIdentity;
@@ -32,6 +33,15 @@ public class AdminUserController {
   @GetMapping
   public ResponseEntity<List<UserProfileResponse>> getUsers(CallerIdentity caller) {
     return ResponseEntity.ok(userService.getUsers(caller));
+  }
+
+  /**
+   * The live state of every platform service, measured now. Staff-only: it names internal services
+   * and how they are behaving.
+   */
+  @GetMapping("/system-health")
+  public ResponseEntity<List<ServiceHealthResponse>> getSystemHealth(CallerIdentity caller) {
+    return ResponseEntity.ok(userService.getSystemHealth(caller));
   }
 
   @GetMapping("/{userId}")

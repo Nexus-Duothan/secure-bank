@@ -13,4 +13,12 @@ public interface UserProfileProvisioningClient {
    * @return true if user-service accepted the call
    */
   boolean provision(UserCredential user);
+
+  /**
+   * Mirrors a status this service has decided (a KYC outcome) onto the customer's profile, so the
+   * app stops showing them as still under review once an officer has ruled.
+   *
+   * @return true if user-service accepted the call
+   */
+  boolean syncStatus(java.util.UUID userId, com.securebank.auth.enums.UserStatus status);
 }

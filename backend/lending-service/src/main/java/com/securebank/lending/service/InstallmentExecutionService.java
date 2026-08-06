@@ -1,6 +1,6 @@
 package com.securebank.lending.service;
 
-import com.securebank.lending.client.AccountSnapshot;
+import com.securebank.lending.client.AccountNotFoundException;
 import com.securebank.lending.client.AccountsClient;
 import com.securebank.lending.client.AccountsUnavailableException;
 import com.securebank.lending.config.LendingServiceProperties;
@@ -8,6 +8,7 @@ import com.securebank.lending.entity.Loan;
 import com.securebank.lending.entity.LoanInstallment;
 import com.securebank.lending.enums.InstallmentStatus;
 import com.securebank.lending.enums.LoanStatus;
+import com.securebank.lending.exception.InsufficientFundsException;
 import com.securebank.lending.exception.ResourceNotFoundException;
 import com.securebank.lending.kafka.LoanEventProducer;
 import com.securebank.lending.kafka.event.RepaymentOverdueEvent;
@@ -26,10 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The single place that actually collects an installment (FR-25), shared by the scheduled
  * auto-deduct runner and the customer-facing "pay now" action so both go through identical
- * locking and retry-policy logic. Like transfer-service's AccountsClient, accounts-service has
- * no real debit endpoint yet — this only checks the linked account's balance and records the
- * outcome; it does not move real money. Once accounts-service grows a debit contract, only
- * the "collected" branch below needs to call it.
+ * locking and retry-policy logic. The collection is a real debit against the borrower's linked
+ * account in accounts-service; a rejected debit (no funds, frozen account) is recorded as a
+ * failed attempt and retried under the repayment policy below.
  */
 @Service
 @RequiredArgsConstructor
@@ -77,13 +77,29 @@ public class InstallmentExecutionService {
 
   private boolean attemptCollection(Loan loan, LoanInstallment installment) {
     try {
-      AccountSnapshot account = accountsClient.getAccount(loan.getLinkedAccountId());
-      return account.balance().compareTo(installment.getTotalAmount()) >= 0;
-    } catch (AccountsUnavailableException ex) {
+      // The installment id is the idempotency key, so a retry after a timeout cannot charge the
+      // borrower twice for the same installment.
+      accountsClient.debit(
+        loan.getLinkedAccountId(),
+        installment.getTotalAmount(),
+        loan.getCurrency(),
+        "LOAN-REPAY-" + installment.getId(),
+        "Loan installment " + installment.getInstallmentNumber()
+      );
+      return true;
+    } catch (InsufficientFundsException ex) {
+      log.info(
+        "Installment {} could not be collected from {}: {}",
+        installment.getId(),
+        loan.getLinkedAccountId(),
+        ex.getMessage()
+      );
+      return false;
+    } catch (AccountNotFoundException | AccountsUnavailableException ex) {
       // Treated the same as insufficient funds: a transient infra fault shouldn't be
       // distinguished from "couldn't collect this time" for retry purposes.
       log.warn(
-        "accounts-service unreachable while collecting installment {}: {}",
+        "accounts-service could not be used to collect installment {}: {}",
         installment.getId(),
         ex.getMessage()
       );

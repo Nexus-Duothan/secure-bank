@@ -58,6 +58,28 @@ public class UserProfileProvisioningRestClient implements UserProfileProvisionin
     }
   }
 
+  @Override
+  public boolean syncStatus(java.util.UUID userId, UserStatus status) {
+    try {
+      restClient
+        .put()
+        .uri("/internal/v1/users/{userId}/status", userId)
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(Map.of("status", profileStatus(status)))
+        .retrieve()
+        .toBodilessEntity();
+      return true;
+    } catch (Exception exception) {
+      // The decision itself is already recorded here; a stale profile status is cosmetic.
+      log.warn(
+        "Could not mirror the status for {} onto their profile: {}",
+        userId,
+        exception.getMessage()
+      );
+      return false;
+    }
+  }
+
   /** user-service tracks a smaller set of states than the credential store does. */
   private String profileStatus(UserStatus status) {
     return switch (status) {

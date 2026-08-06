@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -417,6 +418,144 @@ class AuthControllerTest {
       )
       // Rejected before any password is looked at; the chain answers 403 for an anonymous caller.
       .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void suspendingAUserLocksThemOutAndEndsTheirSessions() throws Exception {
+    testUser.setStatus(UserStatus.ACTIVE);
+    userRepository.save(testUser);
+
+    // Sign in first, so there is a live session for the suspension to end.
+    when(totpClient.verify(testUser.getId(), "123456")).thenReturn(true);
+    MvcResult loginResult = mockMvc
+      .perform(
+        post("/api/v1/auth/login")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              LoginRequest.builder().usernameOrEmail("testuser").password("Secret123!").build()
+            )
+          )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    String preAuth = com.jayway.jsonpath.JsonPath.read(
+      loginResult.getResponse().getContentAsString(),
+      "$.preAuthToken"
+    );
+    MvcResult mfaResult = mockMvc
+      .perform(
+        post("/api/v1/auth/login/verify-mfa")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              MfaVerifyRequest.builder().preAuthToken(preAuth).totpCode("123456").build()
+            )
+          )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    String refreshToken = com.jayway.jsonpath.JsonPath.read(
+      mfaResult.getResponse().getContentAsString(),
+      "$.refreshToken"
+    );
+
+    // An administrator suspends them: user-service pushes BLOCKED in over the internal route.
+    mockMvc
+      .perform(
+        put("/internal/v1/credentials/" + testUser.getId() + "/access")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"status\":\"BLOCKED\"}")
+      )
+      .andExpect(status().isOk());
+
+    assertEquals(
+      UserStatus.BLOCKED,
+      userRepository.findById(testUser.getId()).orElseThrow().getStatus()
+    );
+
+    // They can no longer get past the password step, even with the right password.
+    mockMvc
+      .perform(
+        post("/api/v1/auth/login")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              LoginRequest.builder().usernameOrEmail("testuser").password("Secret123!").build()
+            )
+          )
+      )
+      .andExpect(status().isConflict());
+
+    // And the session they already held cannot be refreshed into a fresh token.
+    mockMvc
+      .perform(
+        post("/api/v1/auth/refresh")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"refreshToken\":\"" + refreshToken + "\"}")
+      )
+      .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void aSuspendedUserCannotFinishASignInThatWasAlreadyUnderway() throws Exception {
+    testUser.setStatus(UserStatus.ACTIVE);
+    userRepository.save(testUser);
+    when(totpClient.verify(testUser.getId(), "123456")).thenReturn(true);
+
+    MvcResult loginResult = mockMvc
+      .perform(
+        post("/api/v1/auth/login")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              LoginRequest.builder().usernameOrEmail("testuser").password("Secret123!").build()
+            )
+          )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    String preAuth = com.jayway.jsonpath.JsonPath.read(
+      loginResult.getResponse().getContentAsString(),
+      "$.preAuthToken"
+    );
+
+    // Suspended between the password step and the authenticator step.
+    mockMvc
+      .perform(
+        put("/internal/v1/credentials/" + testUser.getId() + "/access")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"status\":\"BLOCKED\"}")
+      )
+      .andExpect(status().isOk());
+
+    mockMvc
+      .perform(
+        post("/api/v1/auth/login/verify-mfa")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              MfaVerifyRequest.builder().preAuthToken(preAuth).totpCode("123456").build()
+            )
+          )
+      )
+      .andExpect(status().isConflict());
+  }
+
+  @Test
+  void anAdministrativeRoleChangeReachesTheCredentialsSignInReads() throws Exception {
+    mockMvc
+      .perform(
+        put("/internal/v1/credentials/" + testUser.getId() + "/access")
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"role\":\"BANK_OFFICER\"}")
+      )
+      .andExpect(status().isOk());
+
+    assertEquals(
+      Role.BANK_OFFICER,
+      userRepository.findById(testUser.getId()).orElseThrow().getRole()
+    );
   }
 
   @Test

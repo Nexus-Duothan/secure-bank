@@ -63,6 +63,18 @@
         </dependencies>
     </dependencyManagement>
 
+    <!--
+      Inherited by every module. Actuator is here rather than per-service because the admin
+      System health panel reports on all of them: a service without /actuator/health cannot be
+      told apart from one that is down.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    </dependencies>
+
     <build>
         <pluginManagement>
             <plugins>

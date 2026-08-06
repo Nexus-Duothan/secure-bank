@@ -135,11 +135,7 @@ public class AuthService {
       throw new IllegalArgumentException("Invalid username or password");
     }
 
-    if (user.getStatus() == UserStatus.BLOCKED || user.getStatus() == UserStatus.FROZEN) {
-      throw new IllegalStateException(
-        "Account is " + user.getStatus().name().toLowerCase() + ". Contact customer support."
-      );
-    }
+    assertCanSignIn(user);
 
     String preAuthToken = tokenProvider.generatePreAuthToken(user.getId(), user.getUsername());
 
@@ -165,6 +161,8 @@ public class AuthService {
     if (user == null) {
       throw new IllegalArgumentException("Invalid or expired pre-authentication token");
     }
+
+    assertCanSignIn(user);
 
     // Validate TOTP code via totp-service (with fallback)
     if (!totpClient.verify(user.getId(), request.getTotpCode())) {
@@ -250,6 +248,8 @@ public class AuthService {
     UserCredential user = userRepository
       .findById(session.getUserId())
       .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    assertCanSignIn(user);
 
     // Revoke old session token and issue new
     session.setRevoked(true);
@@ -435,6 +435,55 @@ public class AuthService {
       user.getFullName(),
       Instant.now()
     );
+  }
+
+  // --------------------------------------------------------------------
+  // Administrative access changes (FR-06)
+  // --------------------------------------------------------------------
+
+  /**
+   * Applies a role or status change to the credentials sign-in actually reads. A status that
+   * cannot sign in also ends every live session, so a suspended user stops where they are instead
+   * of carrying on until their token happens to expire.
+   */
+  @Transactional
+  public void updateAccess(UUID userId, CredentialAccessUpdateRequest request) {
+    UserCredential user = userRepository
+      .findById(userId)
+      .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    if (request.getRole() != null) {
+      user.setRole(request.getRole());
+    }
+    if (request.getStatus() != null) {
+      user.setStatus(request.getStatus());
+    }
+    userRepository.save(user);
+
+    // A role change also has to end sessions: the old role is baked into the issued access token.
+    if (request.getRole() != null || !canSignIn(user.getStatus())) {
+      revokeAllSessions(user.getId());
+    }
+  }
+
+  /** Statuses that are allowed to hold a session. Everything else is locked out. */
+  private boolean canSignIn(UserStatus status) {
+    return (
+      status != UserStatus.BLOCKED && status != UserStatus.FROZEN && status != UserStatus.REJECTED
+    );
+  }
+
+  /**
+   * Checked at every point a session is handed out - password step, authenticator step and
+   * refresh - so an account suspended mid-session cannot be carried on by finishing a sign-in that
+   * was already underway.
+   */
+  private void assertCanSignIn(UserCredential user) {
+    if (!canSignIn(user.getStatus())) {
+      throw new IllegalStateException(
+        "Account is " + user.getStatus().name().toLowerCase() + ". Contact customer support."
+      );
+    }
   }
 
   @Transactional(readOnly = true)

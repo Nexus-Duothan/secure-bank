@@ -9,12 +9,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securebank.user.client.CredentialAccessClient;
 import com.securebank.user.client.TotpClient;
 import com.securebank.user.config.UserServiceProperties;
 import com.securebank.user.dto.ConfirmChangeRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.ProfileUpdateRequest;
 import com.securebank.user.dto.RoleUpdateRequest;
+import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserProfileResponse;
 import com.securebank.user.entity.PendingUserChange;
 import com.securebank.user.entity.UserProfile;
@@ -66,6 +68,12 @@ class UserServiceTest {
   @Mock
   private TotpClient totpClient;
 
+  @Mock
+  private CredentialAccessClient credentialAccessClient;
+
+  @Mock
+  private ServiceHealthProbe serviceHealthProbe;
+
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   private UserService userService;
@@ -84,7 +92,9 @@ class UserServiceTest {
       objectMapper,
       properties,
       userSecurityAlertService,
-      totpClient
+      totpClient,
+      credentialAccessClient,
+      serviceHealthProbe
     );
   }
 
@@ -288,6 +298,46 @@ class UserServiceTest {
       );
 
       assertThat(response.role()).isEqualTo(Role.MERCHANT);
+      // The profile row alone changes nothing the user can feel: sign-in reads auth-service.
+      verify(credentialAccessClient).updateAccess(CUSTOMER_ID, null, Role.MERCHANT);
+    }
+
+    @Test
+    void suspendingAUserIsPushedToTheServiceThatOwnsSignIn() {
+      UserProfile profile = customer();
+      when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(profile));
+      when(userProfileRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+      when(
+        userDeviceRepository.findByUserProfileIdAndRevokedAtIsNullOrderByLastVerifiedAtDesc(
+          CUSTOMER_ID
+        )
+      ).thenReturn(List.of());
+
+      UserProfileResponse response = userService.updateStatus(
+        caller(ADMIN_ID, Role.ADMIN),
+        CUSTOMER_ID,
+        new StatusUpdateRequest(UserStatus.SUSPENDED)
+      );
+
+      assertThat(response.status()).isEqualTo(UserStatus.SUSPENDED);
+      verify(credentialAccessClient).updateAccess(CUSTOMER_ID, UserStatus.SUSPENDED, null);
+    }
+
+    @Test
+    void mirroringAStatusFromAuthServiceDoesNotPushItStraightBack() {
+      UserProfile profile = customer();
+      when(userProfileRepository.findById(CUSTOMER_ID)).thenReturn(Optional.of(profile));
+      when(userProfileRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+      when(
+        userDeviceRepository.findByUserProfileIdAndRevokedAtIsNullOrderByLastVerifiedAtDesc(
+          CUSTOMER_ID
+        )
+      ).thenReturn(List.of());
+
+      UserProfileResponse response = userService.syncProfileStatus(CUSTOMER_ID, UserStatus.ACTIVE);
+
+      assertThat(response.status()).isEqualTo(UserStatus.ACTIVE);
+      verify(credentialAccessClient, never()).updateAccess(any(), any(), any());
     }
   }
 

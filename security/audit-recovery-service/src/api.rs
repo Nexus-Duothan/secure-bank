@@ -58,7 +58,10 @@ async fn auth_middleware(
 }
 
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    // The journal routes stay behind the internal service key. Health sits outside it on purpose:
+    // the admin System health panel has to be able to tell "down" from "not authorised", and an
+    // up/down answer reveals nothing about the journal itself.
+    let protected = Router::new()
         .route("/api/v1/audit/entries", post(create_entry).get(get_entries))
         .route("/api/v1/audit/verify", get(verify_journal))
         .route(
@@ -66,8 +69,26 @@ pub fn create_router(state: AppState) -> Router {
             post(replay_service_state),
         )
         .route("/api/v1/audit/anomalies", get(get_anomalies))
-        .route_layer(middleware::from_fn(auth_middleware))
+        .route_layer(middleware::from_fn(auth_middleware));
+
+    Router::new()
+        .route("/actuator/health", get(health))
+        .merge(protected)
         .with_state(state)
+}
+
+/// Reports UP only when the journal behind it can actually be read, so a service that is running
+/// with a broken store is not reported as healthy.
+async fn health(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
+    let report = state.journal.verify_integrity().await;
+    if report.valid {
+        (StatusCode::OK, Json(serde_json::json!({ "status": "UP" })))
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "status": "DOWN", "detail": report.message })),
+        )
+    }
 }
 
 async fn create_entry(

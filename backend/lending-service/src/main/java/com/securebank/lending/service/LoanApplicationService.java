@@ -1,5 +1,6 @@
 package com.securebank.lending.service;
 
+import com.securebank.lending.client.AccountsClient;
 import com.securebank.lending.client.TotpClient;
 import com.securebank.lending.config.LendingServiceProperties;
 import com.securebank.lending.dto.LoanApplicationRequest;
@@ -37,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class LoanApplicationService {
 
+  private final AccountsClient accountsClient;
   private final LoanApplicationRepository loanApplicationRepository;
   private final LoanRepository loanRepository;
   private final LoanInstallmentRepository loanInstallmentRepository;
@@ -176,6 +178,15 @@ public class LoanApplicationService {
       now
     );
     loanInstallmentRepository.saveAll(schedule);
+
+    // Pay the money out. The loan id is the idempotency key, so a retried approval credits once.
+    accountsClient.credit(
+      loan.getLinkedAccountId(),
+      loan.getPrincipal(),
+      loan.getCurrency(),
+      "LOAN-DISBURSE-" + loan.getId(),
+      "Loan disbursement"
+    );
 
     application.setStatus(ApplicationStatus.DISBURSED);
     application.setLoanId(loan.getId());

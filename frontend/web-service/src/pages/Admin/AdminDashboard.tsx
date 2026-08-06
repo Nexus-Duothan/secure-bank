@@ -1,39 +1,93 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Col, Flex, Row, Statistic, Tag, Typography, theme } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Flex,
+  Row,
+  Spin,
+  Statistic,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd';
 import {
   AuditOutlined,
   CheckCircleFilled,
+  CloseCircleFilled,
   FlagOutlined,
+  QuestionCircleFilled,
+  ReloadOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { ADMIN_NAV } from '../../components/staffNavs';
-import adminService from '../../api/adminService';
+import adminService, { type ServiceHealth, type ServiceHealthStatus } from '../../api/adminService';
+import { getApiErrorMessage } from '../../api/apiError';
 import auditService from '../../api/auditService';
 import type { UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
 
-const PLATFORM_SERVICES = [
-  'API Gateway',
-  'Auth Service',
-  'TOTP Service',
-  'User Service',
-  'Accounts Service',
-  'Transfer Service',
-  'Payments Service',
-  'Lending Service',
-  'Notification Service',
-  'Audit & Recovery Service',
-];
+/** How often the panel re-measures while an administrator is watching it. */
+const HEALTH_REFRESH_MS = 15000;
+
+const STATUS_PRESENTATION: Record<
+  ServiceHealthStatus,
+  { label: string; color: string; icon: React.ReactNode }
+> = {
+  UP: {
+    label: 'Online',
+    color: '#1F7A6C',
+    icon: <CheckCircleFilled style={{ color: '#1F7A6C', fontSize: 13 }} />,
+  },
+  DOWN: {
+    label: 'Offline',
+    color: '#CF1322',
+    icon: <CloseCircleFilled style={{ color: '#CF1322', fontSize: 13 }} />,
+  },
+  UNKNOWN: {
+    label: 'Unknown',
+    color: '#AD6800',
+    icon: <QuestionCircleFilled style={{ color: '#D48806', fontSize: 13 }} />,
+  },
+};
 
 const AdminDashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [flaggedCount, setFlaggedCount] = useState<number>(0);
+  const [health, setHealth] = useState<ServiceHealth[]>([]);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [checkingHealth, setCheckingHealth] = useState(true);
+
+  const loadHealth = useCallback(async () => {
+    setCheckingHealth(true);
+    try {
+      const data = await adminService.getSystemHealth();
+      setHealth(data ?? []);
+      setHealthError(null);
+    } catch (error) {
+      // If the panel itself cannot be reached, say so rather than showing a stale all-green list.
+      setHealth([]);
+      setHealthError(
+        getApiErrorMessage(error, 'Could not reach user-service to measure platform health.')
+      );
+    } finally {
+      setCheckingHealth(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHealth();
+    const timer = setInterval(() => void loadHealth(), HEALTH_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [loadHealth]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +114,16 @@ const AdminDashboard: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  const offlineCount = health.filter((service) => service.status === 'DOWN').length;
+  const lastCheckedLabel =
+    health.length > 0
+      ? new Date(health[0].checkedAt).toLocaleTimeString('en-GB', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      : null;
 
   const countByRole = (role: UserProfile['role']) =>
     users.filter((user) => user.role === role).length;
@@ -117,33 +181,92 @@ const AdminDashboard: React.FC = () => {
       </Card>
 
       <Card size="small">
-        <Flex align="center" gap={8} style={{ marginBottom: 4 }}>
-          <AuditOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
-          <Title level={5} style={{ margin: 0 }}>
-            System health
-          </Title>
-        </Flex>
-        <Text style={{ color: token.colorTextSecondary, fontSize: 12 }}>
-          Live status of every platform service.
-        </Text>
-        <div style={{ marginTop: 12 }}>
-          {PLATFORM_SERVICES.map((service, index) => (
-            <Flex
-              key={service}
-              justify="space-between"
-              align="center"
-              style={{
-                padding: '10px 0',
-                borderTop: index === 0 ? 'none' : `1px solid ${token.colorBorderSecondary}`,
-              }}
-            >
-              <Text style={{ fontSize: 13 }}>{service}</Text>
-              <Flex align="center" gap={6}>
-                <CheckCircleFilled style={{ color: '#1F7A6C', fontSize: 13 }} />
-                <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>Online</Text>
-              </Flex>
+        <Flex justify="space-between" align="flex-start" gap={8}>
+          <div>
+            <Flex align="center" gap={8} style={{ marginBottom: 4 }}>
+              <AuditOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
+              <Title level={5} style={{ margin: 0 }}>
+                System health
+              </Title>
+              {offlineCount > 0 && (
+                <Tag color="red" style={{ marginInlineEnd: 0 }}>
+                  {offlineCount} offline
+                </Tag>
+              )}
             </Flex>
-          ))}
+            <Text style={{ color: token.colorTextSecondary, fontSize: 12 }}>
+              {lastCheckedLabel
+                ? `Every service probed directly. Last checked ${lastCheckedLabel}.`
+                : 'Every service probed directly.'}
+            </Text>
+          </div>
+          <Tooltip title="Check again now">
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              loading={checkingHealth}
+              onClick={() => void loadHealth()}
+            />
+          </Tooltip>
+        </Flex>
+
+        {healthError && (
+          <Alert
+            type="warning"
+            showIcon
+            message={healthError}
+            style={{ marginTop: 12, marginBottom: 4 }}
+          />
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          {health.length === 0 && checkingHealth ? (
+            <Flex justify="center" style={{ padding: '24px 0' }}>
+              <Spin />
+            </Flex>
+          ) : (
+            health.map((service, index) => {
+              const presentation = STATUS_PRESENTATION[service.status];
+              return (
+                <Flex
+                  key={service.key}
+                  justify="space-between"
+                  align="center"
+                  gap={12}
+                  style={{
+                    padding: '10px 0',
+                    borderTop: index === 0 ? 'none' : `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <Text style={{ fontSize: 13 }}>{service.name}</Text>
+                    {service.detail && (
+                      <Text
+                        style={{
+                          display: 'block',
+                          fontSize: 11,
+                          color: token.colorTextTertiary,
+                        }}
+                      >
+                        {service.detail}
+                      </Text>
+                    )}
+                  </div>
+                  <Flex align="center" gap={6} style={{ flexShrink: 0 }}>
+                    {presentation.icon}
+                    <Text style={{ fontSize: 12, color: presentation.color, fontWeight: 500 }}>
+                      {presentation.label}
+                    </Text>
+                    {service.status === 'UP' && service.responseTimeMs !== null && (
+                      <Text style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                        {service.responseTimeMs}ms
+                      </Text>
+                    )}
+                  </Flex>
+                </Flex>
+              );
+            })
+          )}
         </div>
       </Card>
     </StaffLayout>

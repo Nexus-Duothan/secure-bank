@@ -1,6 +1,7 @@
 package com.securebank.auth.service;
 
 import com.securebank.auth.client.TotpClient;
+import com.securebank.auth.client.UserProfileProvisioningClient;
 import com.securebank.auth.dto.KycApplicationResponse;
 import com.securebank.auth.dto.KycSubmissionRequest;
 import com.securebank.auth.dto.OfficerKycReviewRequest;
@@ -25,6 +26,7 @@ public class KycService {
   private final KycApplicationRepository kycApplicationRepository;
   private final UserCredentialRepository userCredentialRepository;
   private final TotpClient totpClient;
+  private final UserProfileProvisioningClient userProfileProvisioningClient;
 
   @Transactional
   public KycApplicationResponse submitKyc(UUID userId, KycSubmissionRequest request) {
@@ -105,6 +107,10 @@ public class KycService {
 
     userCredentialRepository.save(user);
     KycApplication saved = kycApplicationRepository.save(application);
+
+    // Let the customer's profile show the outcome; without this they stay "pending review" in the
+    // app even after an officer has approved them.
+    userProfileProvisioningClient.syncStatus(user.getId(), user.getStatus());
 
     return mapToResponse(saved);
   }

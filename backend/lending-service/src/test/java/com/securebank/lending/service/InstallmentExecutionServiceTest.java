@@ -2,17 +2,19 @@ package com.securebank.lending.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.securebank.lending.client.AccountSnapshot;
 import com.securebank.lending.client.AccountsClient;
 import com.securebank.lending.config.LendingServiceProperties;
 import com.securebank.lending.entity.Loan;
 import com.securebank.lending.entity.LoanInstallment;
 import com.securebank.lending.enums.InstallmentStatus;
 import com.securebank.lending.enums.LoanStatus;
+import com.securebank.lending.exception.InsufficientFundsException;
 import com.securebank.lending.kafka.LoanEventProducer;
 import com.securebank.lending.repository.LoanInstallmentRepository;
 import com.securebank.lending.repository.LoanRepository;
@@ -91,9 +93,6 @@ class InstallmentExecutionServiceTest {
       Optional.of(installment)
     );
     when(loanRepository.findForUpdateById(LOAN_ID)).thenReturn(Optional.of(loan()));
-    when(accountsClient.getAccount(ACCOUNT_ID)).thenReturn(
-      new AccountSnapshot(ACCOUNT_ID, new BigDecimal("5000"), "LKR")
-    );
     when(
       loanInstallmentRepository.findFirstByLoanIdAndStatusInOrderByInstallmentNumberAsc(
         any(),
@@ -115,9 +114,6 @@ class InstallmentExecutionServiceTest {
       Optional.of(installment)
     );
     when(loanRepository.findForUpdateById(LOAN_ID)).thenReturn(Optional.of(loan));
-    when(accountsClient.getAccount(ACCOUNT_ID)).thenReturn(
-      new AccountSnapshot(ACCOUNT_ID, new BigDecimal("5000"), "LKR")
-    );
     when(
       loanInstallmentRepository.findFirstByLoanIdAndStatusInOrderByInstallmentNumberAsc(
         any(),
@@ -137,9 +133,9 @@ class InstallmentExecutionServiceTest {
       Optional.of(installment)
     );
     when(loanRepository.findForUpdateById(LOAN_ID)).thenReturn(Optional.of(loan()));
-    when(accountsClient.getAccount(ACCOUNT_ID)).thenReturn(
-      new AccountSnapshot(ACCOUNT_ID, new BigDecimal("10"), "LKR")
-    );
+    doThrow(new InsufficientFundsException("no funds"))
+      .when(accountsClient)
+      .debit(eq(ACCOUNT_ID), any(), any(), any(), any());
 
     LoanInstallment result = service.collectDue(installment.getId());
 
@@ -157,9 +153,9 @@ class InstallmentExecutionServiceTest {
       Optional.of(installment)
     );
     when(loanRepository.findForUpdateById(LOAN_ID)).thenReturn(Optional.of(loan));
-    when(accountsClient.getAccount(ACCOUNT_ID)).thenReturn(
-      new AccountSnapshot(ACCOUNT_ID, new BigDecimal("10"), "LKR")
-    );
+    doThrow(new InsufficientFundsException("no funds"))
+      .when(accountsClient)
+      .debit(eq(ACCOUNT_ID), any(), any(), any(), any());
 
     LoanInstallment result = service.collectDue(installment.getId());
 
@@ -178,6 +174,6 @@ class InstallmentExecutionServiceTest {
     service.collectDue(installment.getId());
 
     verify(loanRepository, never()).findForUpdateById(any());
-    verify(accountsClient, never()).getAccount(any());
+    verify(accountsClient, never()).debit(any(), any(), any(), any(), any());
   }
 }
