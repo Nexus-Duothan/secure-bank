@@ -25,7 +25,7 @@ public class LedgerController {
 
   private final AccountsService accountsService;
 
-  /** The bank-wide transaction journal (FR-30), read by the admin audit view. */
+  /** The bank-wide transaction journal, read by the admin audit view. */
   @GetMapping("/journal")
   public List<JournalEntryResponse> getJournal(@RequestParam(defaultValue = "200") int limit) {
     return accountsService.getJournal(limit);

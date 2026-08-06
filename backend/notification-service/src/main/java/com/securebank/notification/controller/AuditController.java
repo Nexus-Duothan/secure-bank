@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Read-only view of the transaction journal (FR-30), used by the admin audit page
+ * Read-only view of the transaction journal, used by the admin audit page
  * and the officer's flagged-transaction queue.
  */
 @RestController

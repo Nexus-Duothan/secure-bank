@@ -8,7 +8,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** Generates the cryptographically reference-numbered digital receipt required by FR-21. */
+/** Generates the cryptographically reference-numbered digital receipt for a payment. */
 @Component
 public class ReceiptReferenceGenerator {
 

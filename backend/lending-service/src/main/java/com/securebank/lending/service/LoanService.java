@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** FR-24: repayment schedule display, plus the borrower-facing "pay now" and autopay toggle actions. */
+/** Repayment schedule display, plus the borrower-facing "pay now" and autopay toggle actions. */
 @Service
 @RequiredArgsConstructor
 public class LoanService {

@@ -288,7 +288,7 @@ public class AuthService {
   }
 
   // --------------------------------------------------------------------
-  // Changing the password while signed in (FR-05)
+  // Changing the password while signed in
   // --------------------------------------------------------------------
 
   /**
@@ -438,7 +438,7 @@ public class AuthService {
   }
 
   // --------------------------------------------------------------------
-  // Administrative access changes (FR-06)
+  // Administrative access changes
   // --------------------------------------------------------------------
 
   /**

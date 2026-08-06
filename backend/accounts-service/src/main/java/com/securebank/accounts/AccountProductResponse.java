@@ -3,7 +3,7 @@ package com.securebank.accounts;
 import java.math.BigDecimal;
 
 /**
- * An account product the bank offers (FR-09). Customers may only open an account
+ * An account product the bank offers. Customers may only open an account
  * against one of these; the product decides the interest rate, the minimum
  * balance, and the monthly fee, so it is never free text.
  */

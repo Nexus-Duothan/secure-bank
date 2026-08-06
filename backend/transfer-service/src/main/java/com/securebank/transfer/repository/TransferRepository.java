@@ -18,7 +18,7 @@ public interface TransferRepository extends JpaRepository<Transfer, UUID> {
 
   /**
    * Locked read used by {@code confirm()} so two concurrent confirm calls on the same transfer
-   * serialise instead of both reading PENDING_CONFIRMATION and both executing it (NFR-R2).
+   * serialise instead of both reading PENDING_CONFIRMATION and both executing it.
    */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select t from Transfer t where t.id = :id and t.initiatedByUserId = :initiatedByUserId")

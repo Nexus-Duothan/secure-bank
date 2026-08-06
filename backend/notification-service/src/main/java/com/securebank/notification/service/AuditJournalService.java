@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * Read side of the append-only transaction journal (FR-30). The journal itself is the ledger in
+ * Read side of the append-only transaction journal. The journal itself is the ledger in
  * accounts-service, written by the core banking services; nothing is stored or invented here, so a
  * bank with no posted movements yet correctly shows an empty audit list.
  */

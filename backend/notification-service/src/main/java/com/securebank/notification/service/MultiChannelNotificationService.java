@@ -63,7 +63,7 @@ public class MultiChannelNotificationService {
       dispatchers.get(targetChannel).dispatch(userId, type, title, message, recipientContact);
     }
 
-    // FR-29: Guaranteed SMS fallback for critical security alerts
+    // Guaranteed SMS fallback for critical security alerts
     if (
       type == NotificationType.SECURITY_ALERT &&
       targetChannel != NotificationChannel.SMS &&

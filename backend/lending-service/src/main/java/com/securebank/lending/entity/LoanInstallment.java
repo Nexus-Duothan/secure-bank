@@ -9,8 +9,8 @@ import lombok.*;
 
 /**
  * One row per scheduled installment, computed and persisted in full at disbursement time
- * (reducing-balance/EMI amortization) rather than recomputed on the fly — so FR-24's schedule
- * display and FR-25's due-date collection are both plain row lookups/updates.
+ * (reducing-balance/EMI amortization) rather than recomputed on the fly — so schedule display
+ * and due-date collection are both plain row lookups/updates.
  */
 @Entity
 @Table(name = "loan_installments")
@@ -62,7 +62,7 @@ public class LoanInstallment {
   @Column(name = "next_retry_at")
   private Instant nextRetryAt;
 
-  /** So the FR-26 reminder for a given installment fires at most once. */
+  /** So the reminder for a given installment fires at most once. */
   @Column(name = "reminder_sent_at")
   private Instant reminderSentAt;
 }

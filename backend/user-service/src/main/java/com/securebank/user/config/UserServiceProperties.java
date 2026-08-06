@@ -25,7 +25,7 @@ public record UserServiceProperties(Cors cors, Otp otp, Security security) {
   /**
    * @param ttl how long a challenge stays valid
    * @param maxAttempts wrong authenticator codes tolerated before the challenge is burned (blocks
-   *     brute force of the six digit space, FR-33)
+   *     brute force of the six digit space)
    */
   public record Otp(Duration ttl, int maxAttempts) {
     public Otp {

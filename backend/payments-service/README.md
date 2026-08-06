@@ -6,11 +6,11 @@ The **Payments Service** processes Account-to-Vendor (A2V) external payments, me
 
 ## 🎯 Implemented Features & SRS Mapping
 
-- **Merchant Registration** (`FR-08`, `FR-15`): Self-service registration for users with the `MERCHANT` role — merchants are users, not a separate identity system (`auth-service`'s `Role` enum). Generates a unique `merchant_code` (e.g. `MCH-7F3K9Q`).
-- **External Merchant Payments (A2V)** (`FR-15`): `POST /pay` settles a customer payment against a registered, active merchant.
-- **QR-Based Payments** (`FR-20`): `POST /qr/pay` decodes a base64-encoded JSON QR payload (a format invented for this service — see below) and settles against the embedded or overridden amount.
-- **Digital Receipts** (`FR-21`): Every completed payment gets a SHA-256-derived, cryptographically reference-numbered receipt (`RCPT-XXXXXXXXXXXXXXXX`), retrievable via `GET /{id}/receipt`.
-- **Fraud Detection Hook** (`FR-31`): After every vendor payment, this service posts an audit entry to `security/audit-recovery-service` (Rust/Axum, port `8089`) and checks its live anomaly report. If the payer trips the high-velocity threshold (≥10 events in a rolling 1-hour window, `risk_score ≥ 75`), the payment is flipped from `COMPLETED` to `HELD_FOR_REVIEW` for a `BANK_OFFICER`/`ADMIN` to resolve via `POST /officer/{id}/review`.
+- **Merchant Registration**: Self-service registration for users with the `MERCHANT` role — merchants are users, not a separate identity system (`auth-service`'s `Role` enum). Generates a unique `merchant_code` (e.g. `MCH-7F3K9Q`).
+- **External Merchant Payments (A2V)**: `POST /pay` settles a customer payment against a registered, active merchant.
+- **QR-Based Payments**: `POST /qr/pay` decodes a base64-encoded JSON QR payload (a format invented for this service — see below) and settles against the embedded or overridden amount.
+- **Digital Receipts**: Every completed payment gets a SHA-256-derived, cryptographically reference-numbered receipt (`RCPT-XXXXXXXXXXXXXXXX`), retrievable via `GET /{id}/receipt`.
+- **Fraud Detection Hook**: After every vendor payment, this service posts an audit entry to `security/audit-recovery-service` (Rust/Axum, port `8089`) and checks its live anomaly report. If the payer trips the high-velocity threshold (≥10 events in a rolling 1-hour window, `risk_score ≥ 75`), the payment is flipped from `COMPLETED` to `HELD_FOR_REVIEW` for a `BANK_OFFICER`/`ADMIN` to resolve via `POST /officer/{id}/review`.
 - **Event Publishing**: Publishes `PaymentCompletedEvent`/`PaymentHeldEvent` to Kafka (`payments.completed.v1`, `payments.held-for-review.v1`) — see "Kafka Event Schema" below. No consumer exists yet anywhere in the repo; this is publish-only groundwork.
 
 ---

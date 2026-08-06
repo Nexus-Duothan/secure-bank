@@ -1,6 +1,6 @@
 package com.securebank.lending.enums;
 
-/** FR-23 loan application lifecycle. */
+/** The loan application lifecycle. */
 public enum ApplicationStatus {
   SUBMITTED,
   UNDER_REVIEW,

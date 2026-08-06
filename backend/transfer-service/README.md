@@ -6,12 +6,12 @@ The **Transfer Service** orchestrates internal Account-to-Account (A2A) fund tra
 
 ## 🎯 What to Develop
 
-- **Internal Fund Transfers (A2A)**: Execute real-time transfers with balance sufficiency checks (`FR-14`).
-- **Payee Management**: Add/edit payees with a 12-hour cooling period for large transfers (`FR-16`).
-- **Transfer Confirmation**: Summarize transfer details (recipient, fee, amount) prior to execution (`FR-17`).
-- **Transaction Limits**: Enforce daily and per-transaction upper bounds (`FR-18`).
-- **Scheduled Payments**: One-time future & recurring payment scheduling (`FR-19`).
-- **ACID Compliance & Idempotency**: Guarantee atomic ledger balance updates (`NFR-R2`).
+- **Internal Fund Transfers (A2A)**: Execute real-time transfers with balance sufficiency checks.
+- **Payee Management**: Add/edit payees with a 12-hour cooling period for large transfers.
+- **Transfer Confirmation**: Summarize transfer details (recipient, fee, amount) prior to execution.
+- **Transaction Limits**: Enforce daily and per-transaction upper bounds.
+- **Scheduled Payments**: One-time future & recurring payment scheduling.
+- **ACID Compliance & Idempotency**: Guarantee atomic ledger balance updates.
 
 ---
 

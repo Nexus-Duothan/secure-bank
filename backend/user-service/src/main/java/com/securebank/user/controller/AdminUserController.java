@@ -16,10 +16,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Role and status administration (FR-08). Authorisation is enforced in {@link UserService} so the
+ * Role and status administration. Authorisation is enforced in {@link UserService} so the
  * rules hold for any caller of those operations, not only this HTTP surface.
  *
- * <p>Role and status changes are high-risk actions (FR-04): they are staged behind a one-time code
+ * <p>Role and status changes are high-risk actions: they are staged behind a one-time code
  * sent to the staff member and only applied on {@code /changes/{id}/confirm}. There is no direct
  * mutation endpoint, so the OTP step cannot be skipped.
  */

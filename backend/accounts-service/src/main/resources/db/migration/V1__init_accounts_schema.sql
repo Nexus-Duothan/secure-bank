@@ -1,4 +1,4 @@
--- Accounts & ledger schema (FR-09, FR-10, FR-30).
+-- Accounts & ledger schema.
 --
 -- Nothing is seeded here on purpose: a brand new customer must see an empty
 -- portfolio until they open or claim an account, and every figure the API

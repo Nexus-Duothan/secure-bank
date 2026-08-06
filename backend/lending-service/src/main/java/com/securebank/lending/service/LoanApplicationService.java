@@ -27,11 +27,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Loan origination and review (FR-22, FR-23). Applications land straight in UNDER_REVIEW —
+ * Loan origination and review. Applications land straight in UNDER_REVIEW —
  * this is a synchronous digital intake with no separate manual "claim from queue" step, so
  * there's no meaningful window where an application is SUBMITTED but not yet queued for
  * review. Approving an application disburses it in the same transaction: creates the Loan,
- * computes and persists its full amortization schedule (FR-24), and publishes a
+ * computes and persists its full amortization schedule, and publishes a
  * LoanDisbursedEvent.
  */
 @Service

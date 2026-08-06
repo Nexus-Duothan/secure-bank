@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Saved-payee management (FR-16). Adding a payee is staged as a {@link PendingPayeeAddition} and
+ * Saved-payee management. Adding a payee is staged as a {@link PendingPayeeAddition} and
  * only takes effect once the caller confirms it with the current code from their authenticator app
  * (TOTP), so a hijacked session alone can't add a transfer destination. A confirmed payee carries a
  * 12-hour cooling-off window during which {@link TransferService} rejects large transfers to it.

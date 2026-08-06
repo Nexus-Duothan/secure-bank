@@ -27,7 +27,7 @@ public class Payee {
   @Column(name = "account_reference", nullable = false, length = 64)
   private String accountReference;
 
-  /** Large transfers to this payee are rejected until this instant (FR-16). */
+  /** Large transfers to this payee are rejected until this instant. */
   @Column(name = "cooling_off_until", nullable = false)
   private Instant coolingOffUntil;
 

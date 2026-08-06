@@ -12,9 +12,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * Talks to the real, already-built security/audit-recovery-service (Rust/Axum, port 8089)
- * for FR-30/FR-31. That service's anomaly engine flags a user_id as high-velocity when
- * they generate >= 10 events of any type within a rolling 1-hour window (risk_score 75),
- * returned only while still "ACTIVE" — there is no server-side user_id filter on
+ * for the journal and anomaly checks. That service's anomaly engine flags a user_id as
+ * high-velocity when they generate >= 10 events of any type within a rolling 1-hour window
+ * (risk_score 75), returned only while still "ACTIVE" — there is no server-side user_id filter on
  * GET /anomalies, so callers filter client-side. Not final so a test-profile subclass can
  * override both methods without a live audit-recovery-service.
  *

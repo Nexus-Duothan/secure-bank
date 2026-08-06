@@ -33,10 +33,10 @@ public record TransferServiceProperties(
   }
 
   /**
-   * @param perTransaction maximum amount allowed in a single transfer (FR-18)
-   * @param daily maximum aggregate amount allowed from one account per calendar day (FR-18)
+   * @param perTransaction maximum amount allowed in a single transfer
+   * @param daily maximum aggregate amount allowed from one account per calendar day
    * @param payeeCoolingOffThreshold amount at or above which a transfer to a payee still inside
-   *     its 12-hour cooling-off window is rejected (FR-16)
+   *     its 12-hour cooling-off window is rejected
    */
   public record Limits(
     BigDecimal perTransaction,

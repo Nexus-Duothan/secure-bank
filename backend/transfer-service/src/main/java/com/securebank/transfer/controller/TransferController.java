@@ -12,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Internal Account-to-Account transfers (FR-14). Every route acts on the {@link CallerIdentity}
+ * Internal Account-to-Account transfers. Every route acts on the {@link CallerIdentity}
  * resolved from the caller's access token, never on a request-supplied user id.
  */
 @RestController
@@ -23,7 +23,7 @@ public class TransferController {
   private final TransferService transferService;
 
   /**
-   * Stages a transfer for review (FR-17): validates the recipient, balance and limits, and
+   * Stages a transfer for review: validates the recipient, balance and limits, and
    * returns a summary the client should display before calling {@link #confirm}.
    */
   @PostMapping("/quote")

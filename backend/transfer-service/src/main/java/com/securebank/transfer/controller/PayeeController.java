@@ -15,7 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Saved-payee management (FR-16). Every route acts on the {@link CallerIdentity} resolved from
+ * Saved-payee management. Every route acts on the {@link CallerIdentity} resolved from
  * the caller's access token, never on a request-supplied user id.
  */
 @RestController

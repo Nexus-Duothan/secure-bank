@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The single place that actually collects an installment (FR-25), shared by the scheduled
+ * The single place that actually collects an installment, shared by the scheduled
  * auto-deduct runner and the customer-facing "pay now" action so both go through identical
  * locking and retry-policy logic. The collection is a real debit against the borrower's linked
  * account in accounts-service; a rejected debit (no funds, frozen account) is recorded as a
@@ -153,9 +153,9 @@ public class InstallmentExecutionService {
   }
 
   /**
-   * FR-26. Not pessimistic-locked: this only sets a single "already reminded" marker rather
+   * Not pessimistic-locked: this only sets a single "already reminded" marker rather
    * than moving money, so at worst a rare overlapping tick sends one duplicate reminder -
-   * acceptable under NFR-R4's at-least-once delivery model, not worth a lock for.
+   * acceptable under the at-least-once delivery model, not worth a lock for.
    */
   @Transactional
   public void sendReminder(UUID installmentId) {

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Builds a standard reducing-balance (EMI) repayment schedule and persists every installment
- * up front at disbursement time (FR-24), rather than recomputing it on the fly.
+ * up front at disbursement time, rather than recomputing it on the fly.
  */
 @Component
 public class AmortizationCalculator {

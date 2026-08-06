@@ -41,7 +41,7 @@ securebank:
       # API gateway does not publish.
       base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
     loan:
-      # FR-22: platform-wide application bounds.
+      # Platform-wide application bounds.
       min-amount: 10000
       max-amount: 5000000
       min-term-months: 6
@@ -49,11 +49,11 @@ securebank:
       # Flat estimated/offered rate; no risk-based pricing model exists yet.
       default-annual-interest-rate: 11.5
     repayment:
-      # FR-25's retry policy is not specified by the FR - documented judgment call: retry
+      # The retry policy is a documented judgment call rather than a given: retry
       # once a day for up to 3 attempts before marking the installment OVERDUE.
       max-attempts: 3
       retry-interval: PT24H
-      # FR-26: how long before the due date a reminder event is published.
+      # How long before the due date a reminder event is published.
       reminder-lead-time: PT72H
 
 lending:

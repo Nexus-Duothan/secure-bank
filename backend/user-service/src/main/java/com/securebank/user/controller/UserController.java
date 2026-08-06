@@ -16,7 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Self-service profile endpoints (FR-07). Every route acts on the {@link CallerIdentity} resolved
+ * Self-service profile endpoints. Every route acts on the {@link CallerIdentity} resolved
  * from the gateway identity headers, never on a request-supplied user id.
  */
 @RestController

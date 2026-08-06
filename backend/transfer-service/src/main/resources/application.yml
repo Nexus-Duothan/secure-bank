@@ -31,10 +31,10 @@ securebank:
         - http://localhost:3000
         - http://localhost:5173
     limits:
-      # FR-18: platform-wide defaults; a lower personal limit can be layered on later.
+      # Platform-wide defaults; a lower personal limit can be layered on later.
       per-transaction: 500000
       daily: 1000000
-      # FR-16: transfers at or above this amount are blocked while a payee is cooling off.
+      # Transfers at or above this amount are blocked while a payee is cooling off.
       payee-cooling-off-threshold: 50000
     otp:
       # How long a staged payee waits for the caller's authenticator code, and how many wrong

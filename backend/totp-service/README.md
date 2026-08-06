@@ -1,6 +1,6 @@
 # TOTP MFA Service (`totp-service`)
 
-The **TOTP Service** is a dedicated microservice responsible for generating, rendering QR codes, and cryptographically verifying Time-Based One-Time Passwords (**RFC 6238**) and single-use emergency recovery scratch codes for multi-factor authentication (**FR-04**).
+The **TOTP Service** is a dedicated microservice responsible for generating, rendering QR codes, and cryptographically verifying Time-Based One-Time Passwords (**RFC 6238**) and single-use emergency recovery scratch codes for multi-factor authentication.
 
 ---
 

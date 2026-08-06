@@ -6,11 +6,11 @@ The **Accounts Service** owns core banking account management, real-time ledger 
 
 ## 🎯 What to Develop
 
-- **Digital Account Creation**: Create savings and current accounts for verified users (`FR-09`).
-- **Account Dashboard & Balances**: Display real-time account status and balance information (`FR-10`).
-- **Transaction Ledger**: Queryable, searchable transaction history by date range, amount, and type (`FR-11`).
-- **Statement Generation**: Download monthly PDF statements (`FR-12`).
-- **Self-Service Account Freeze**: Allow instant account freezing/unfreezing by account owners (`FR-13`).
+- **Digital Account Creation**: Create savings and current accounts for verified users.
+- **Account Dashboard & Balances**: Display real-time account status and balance information.
+- **Transaction Ledger**: Queryable, searchable transaction history by date range, amount, and type.
+- **Statement Generation**: Download monthly PDF statements.
+- **Self-Service Account Freeze**: Allow instant account freezing/unfreezing by account owners.
 - **Event Streaming**: Publish ledger state changes to Apache Kafka for immutable audit logging.
 
 ---
@@ -58,14 +58,14 @@ by `totp-service`.
 Money is moved by other core services through routes the API gateway does **not** publish, so no
 browser can reach them:
 
-| Route                                                  | Used by                                                 |
-| ------------------------------------------------------ | ------------------------------------------------------- |
-| `GET /internal/v1/accounts/{id}`                       | transfer, lending - balance before moving money         |
-| `POST /internal/v1/accounts/{id}/debit`                | transfer - takes money off the sender                   |
-| `POST /internal/v1/accounts/{id}/credit`               | credits a known account                                 |
-| `POST /internal/v1/accounts/by-user/{userId}/debit`    | payments - charges the payer's primary account          |
-| `POST /internal/v1/accounts/by-number/{number}/credit` | transfer - pays an in-bank beneficiary                  |
-| `GET /internal/v1/accounts/journal`                    | notification-service - the audit view's journal (FR-30) |
+| Route                                                  | Used by                                         |
+| ------------------------------------------------------ | ----------------------------------------------- |
+| `GET /internal/v1/accounts/{id}`                       | transfer, lending - balance before moving money |
+| `POST /internal/v1/accounts/{id}/debit`                | transfer - takes money off the sender           |
+| `POST /internal/v1/accounts/{id}/credit`               | credits a known account                         |
+| `POST /internal/v1/accounts/by-user/{userId}/debit`    | payments - charges the payer's primary account  |
+| `POST /internal/v1/accounts/by-number/{number}/credit` | transfer - pays an in-bank beneficiary          |
+| `GET /internal/v1/accounts/journal`                    | notification-service - the audit view's journal |
 
 Every posting carries a `reference` from the calling service. Re-posting the same reference on the
 same account is a no-op, so a retry after a timeout cannot move the money twice.

@@ -7,9 +7,9 @@ The **API Gateway** acts as the single entry point for all incoming external req
 ## 🎯 What to Develop
 
 - **Request Routing**: Proxy rules for all internal backend services (`/api/v1/auth`, `/api/v1/users`, `/api/v1/accounts`, `/api/v1/transfers`, `/api/v1/payments`, `/api/v1/loans`).
-- **Rate Limiting**: Redis/In-memory token bucket rate limiting per IP and authenticated user session (`FR-33`).
-- **Zero-Trust Token Validation**: Verify JWT session tokens before forwarding traffic downstream to internal microservices (`NFR-S3`).
-- **TLS Termination**: Enforce TLS 1.3 for incoming client traffic (`NFR-S1`).
+- **Rate Limiting**: Redis/In-memory token bucket rate limiting per IP and authenticated user session.
+- **Zero-Trust Token Validation**: Verify JWT session tokens before forwarding traffic downstream to internal microservices.
+- **TLS Termination**: Enforce TLS 1.3 for incoming client traffic.
 
 ---
 

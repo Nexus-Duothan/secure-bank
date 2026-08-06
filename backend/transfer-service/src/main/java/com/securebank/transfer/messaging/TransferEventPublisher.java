@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Raises Spring application events for completed/failed transfers. {@link KafkaTransferEventListener}
  * relays them to Kafka only after the owning transaction commits, so a broker hiccup can never roll
- * back a transfer that already succeeded in Postgres (NFR-R2, and the "peripheral service outage
- * shouldn't block core transactional flow" principle from the architecture doc).
+ * back a transfer that already succeeded in Postgres.
  */
 @Component
 @RequiredArgsConstructor

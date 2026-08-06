@@ -181,7 +181,7 @@ public class PaymentService {
   }
 
   /**
-   * FR-31: after a vendor payment, record it with audit-recovery-service and check
+   * After a vendor payment, record it with audit-recovery-service and check
    * whether the payer now trips the high-velocity anomaly threshold. If so, the payment
    * (already COMPLETED against accounts-service) is flipped to HELD_FOR_REVIEW for an
    * officer to resolve via the /officer/{id}/review endpoint. There is no reversal call

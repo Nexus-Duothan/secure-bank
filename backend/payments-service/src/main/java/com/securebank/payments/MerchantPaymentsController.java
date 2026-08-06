@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Merchant portal endpoints (FR-15/FR-20): a read-only view of takings,
+ * Merchant portal endpoints: a read-only view of takings,
  * payments in, and settlement payouts. Refunds and disputes are handled in the
  * bank's merchant system, so there are no mutation endpoints here. The API
  * Gateway stamps X-User-Role from the verified JWT, so the role header is

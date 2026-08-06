@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Published when an installment exhausts its FR-25 retry policy without a successful collection. */
+/** Published when an installment exhausts its retry policy without a successful collection. */
 public record RepaymentOverdueEvent(
   UUID loanId,
   UUID borrowerUserId,

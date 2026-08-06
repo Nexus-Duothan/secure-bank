@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.*;
 
 /**
- * A signed-in customer changing their own password (FR-05). The current password proves it is
+ * A signed-in customer changing their own password. The current password proves it is
  * really them at the keyboard; the change itself is only applied after the authenticator code is
  * confirmed on the follow-up call.
  */

@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Scheduled and recurring payments (FR-19). Every route acts on the {@link CallerIdentity}
+ * Scheduled and recurring payments. Every route acts on the {@link CallerIdentity}
  * resolved from the caller's access token, never on a request-supplied user id.
  */
 @RestController

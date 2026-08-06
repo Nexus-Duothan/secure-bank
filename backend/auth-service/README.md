@@ -6,12 +6,12 @@ The **Authentication Service** is the central identity authority, credential sto
 
 ## 🎯 Implemented Features & SRS Mapping
 
-- **User Registration & State Machine** (`FR-01`, `FR-02`): Customer registration (`PENDING_KYC`), document submission (`UNDER_REVIEW`), and officer review/approval queue (`ACTIVE` / `REJECTED`).
-- **Credential Hashing & Protection** (`FR-03`, `NFR-S4`): Salted password storage using Spring Security's `BCryptPasswordEncoder` (cost factor 12).
-- **Two-Step Login & TOTP MFA** (`FR-04`): Step 1 verifies credentials and returns a pre-auth token; Step 2 verifies 6-digit TOTP codes before issuing JWT sessions.
-- **Session Management & Device Revocation** (`FR-05`): JJWT 0.12.6 HMAC-SHA256 tokens (5-minute short-lived access tokens, 7-day refresh tokens), IP & User-Agent device parsing, active session listing, and remote session revocation.
-- **Password Recovery** (`FR-06`): Token-based, 15-minute expiring, MFA-protected password resets that automatically revoke all active user sessions upon completion.
-- **Role-Based Access Control** (`FR-08`, `NFR-S5`): RBAC enforcement for `CUSTOMER`, `MERCHANT`, `BANK_OFFICER`, and `ADMIN` roles.
+- **User Registration & State Machine**: Customer registration (`PENDING_KYC`), document submission (`UNDER_REVIEW`), and officer review/approval queue (`ACTIVE` / `REJECTED`).
+- **Credential Hashing & Protection**: Salted password storage using Spring Security's `BCryptPasswordEncoder` (cost factor 12).
+- **Two-Step Login & TOTP MFA**: Step 1 verifies credentials and returns a pre-auth token; Step 2 verifies 6-digit TOTP codes before issuing JWT sessions.
+- **Session Management & Device Revocation**: JJWT 0.12.6 HMAC-SHA256 tokens (5-minute short-lived access tokens, 7-day refresh tokens), IP & User-Agent device parsing, active session listing, and remote session revocation.
+- **Password Recovery**: Token-based, 15-minute expiring, MFA-protected password resets that automatically revoke all active user sessions upon completion.
+- **Role-Based Access Control**: RBAC enforcement for `CUSTOMER`, `MERCHANT`, `BANK_OFFICER`, and `ADMIN` roles.
 
 ---
 

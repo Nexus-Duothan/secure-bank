@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Internal relay used by accounts-service and user-service to get a one-time code
- * out to the customer (FR-04).
+ * out to the customer.
  *
  * <p>Callers are other services on the internal network, not browsers, so they carry
  * no end-user JWT. The path is therefore permitted in {@code SecurityConfig} and must

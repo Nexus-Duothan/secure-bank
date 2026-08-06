@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * @param productCode the bank product being opened; required, because an account
- *     can only be opened against a product the bank offers (FR-09).
+ *     can only be opened against a product the bank offers.
  * @param nickname the customer's own name for the account; optional, the product
  *     name is used when it is left empty.
  */

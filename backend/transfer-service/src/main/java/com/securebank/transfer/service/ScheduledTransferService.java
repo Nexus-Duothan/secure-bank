@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * User-facing management of scheduled and recurring payments (FR-19). Execution of due schedules
+ * User-facing management of scheduled and recurring payments. Execution of due schedules
  * happens separately in {@link ScheduledTransferExecutionService}, driven by
  * {@link com.securebank.transfer.config.ScheduledTransferRunner}.
  */

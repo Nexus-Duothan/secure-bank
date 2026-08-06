@@ -40,7 +40,7 @@ accounts-service:
   base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
 
 # security/audit-recovery-service (Rust/Axum, port 8089) — the real, already-built
-# fraud/anomaly engine this service's FR-31 hook delegates to.
+# fraud/anomaly engine this service's post-payment hook delegates to.
 audit-service:
   base-url: ${AUDIT_SERVICE_BASE_URL:http://127.0.0.1:8089}
   api-key: ${AUDIT_SERVICE_API_KEY:securebank_audit_internal_secret_key_2026}

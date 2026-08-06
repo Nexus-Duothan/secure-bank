@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Polls for due installment collections (FR-25) and reminders (FR-26), handing each off
+ * Polls for due installment collections and reminders, handing each off
  * individually to {@link InstallmentExecutionService} for a locked, transactional execution.
  * This method itself stays un-transactional and the poll queries are cheap non-locking reads,
  * so one slow or failing installment can't hold up the others in the same tick — though, like

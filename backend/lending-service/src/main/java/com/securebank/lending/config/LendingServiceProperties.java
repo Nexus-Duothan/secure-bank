@@ -25,7 +25,7 @@ public record LendingServiceProperties(
 
   /**
    * @param minAmount smallest amount a loan application may request
-   * @param maxAmount largest amount a loan application may request (FR-22)
+   * @param maxAmount largest amount a loan application may request
    * @param minTermMonths shortest repayment term offered
    * @param maxTermMonths longest repayment term offered
    * @param defaultAnnualInterestRate flat estimated/offered annual rate (percent) applied at
@@ -49,11 +49,11 @@ public record LendingServiceProperties(
   }
 
   /**
-   * FR-25's automated-repayment retry policy. Not specified by the FR, so this is a
-   * documented judgment call: on insufficient funds (or accounts-service being
-   * unreachable — both are "couldn't collect this time" outcomes), retry once per day for
+   * The automated-repayment retry policy, which is a documented judgment call rather than a
+   * given: on insufficient funds (or accounts-service being unreachable — both are "couldn't
+   * collect this time" outcomes), retry once per day for
    * {@code maxAttempts} days before giving up on that installment and marking it OVERDUE
-   * (which also flips the loan to DELINQUENT). {@code reminderLeadTime} governs FR-26:
+   * (which also flips the loan to DELINQUENT). {@code reminderLeadTime} governs the reminder:
    * how long before an installment's due date a reminder event is published.
    */
   public record Repayment(int maxAttempts, Duration retryInterval, Duration reminderLeadTime) {

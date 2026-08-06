@@ -22,7 +22,7 @@ public interface LoanInstallmentRepository extends JpaRepository<LoanInstallment
   /**
    * Cheap, non-locking poll: due PENDING installments, or FAILED ones whose retry is now due,
    * for loans that still have autopay enabled (a paused loan's installments still appear in
-   * FR-24's schedule and reminders, but the scheduled runner must not collect them - only the
+   * the schedule and reminders, but the scheduled runner must not collect them - only the
    * manual "pay now" action does).
    */
   @Query(

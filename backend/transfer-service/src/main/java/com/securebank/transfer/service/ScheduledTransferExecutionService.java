@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Executes a single due scheduled payment (FR-19) by driving the same quote-then-confirm path a
+ * Executes a single due scheduled payment by driving the same quote-then-confirm path a
  * user would go through, so scheduled runs get the exact same balance, limit and payee
  * cooling-off checks as an interactive transfer.
  */
@@ -73,7 +73,7 @@ public class ScheduledTransferExecutionService {
   private TransferResponse runTransfer(ScheduledTransfer schedule) {
     CallerIdentity caller = new CallerIdentity(schedule.getOwnerUserId());
     // Ties the quote to this exact occurrence, so a crash-and-retry between quote and confirm
-    // reuses the same pending transfer instead of double-executing it (NFR-R2).
+    // reuses the same pending transfer instead of double-executing it.
     String idempotencyKey = "scheduled:" + schedule.getId() + ":" + schedule.getNextRunAt();
     TransferQuoteRequest request = new TransferQuoteRequest(
       schedule.getFromAccountId(),

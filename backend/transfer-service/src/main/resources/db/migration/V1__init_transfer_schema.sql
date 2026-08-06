@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS transfers (
   confirmed_at TIMESTAMP WITH TIME ZONE
 );
 
--- A retried quote with the same caller-supplied key must resolve to the same transfer (NFR-R2)
+-- A retried quote with the same caller-supplied key must resolve to the same transfer
 -- rather than creating a duplicate. No WHERE predicate is needed to exempt NULL keys: both
 -- Postgres and H2 already treat NULL as distinct from NULL in a unique index, so callers who
 -- skip the idempotency key are never deduped against each other. A partial index here also

@@ -14,7 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Loan origination, review, and repayment (FR-22 through FR-26). Every route acts on the
+ * Loan origination, review, and repayment. Every route acts on the
  * caller id resolved from the verified access token, never on a request-supplied user id.
  */
 @RestController

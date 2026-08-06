@@ -99,7 +99,7 @@ class UserServiceTest {
   }
 
   @Nested
-  @DisplayName("TOTP confirmed changes (FR-07)")
+  @DisplayName("TOTP confirmed changes")
   class TotpConfirmedChanges {
 
     @Test
@@ -245,7 +245,7 @@ class UserServiceTest {
   }
 
   @Nested
-  @DisplayName("Role based access control (FR-08)")
+  @DisplayName("Role based access control")
   class RoleBasedAccessControl {
 
     @Test

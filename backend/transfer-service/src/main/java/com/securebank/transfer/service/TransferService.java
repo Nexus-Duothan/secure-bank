@@ -26,14 +26,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Internal Account-to-Account transfer orchestration (FR-14).
+ * Internal Account-to-Account transfer orchestration.
  *
- * <p>A transfer is always quoted before it executes (FR-17): {@link #quote} validates the request
+ * <p>A transfer is always quoted before it executes: {@link #quote} validates the request
  * and balance and stages a {@code PENDING_CONFIRMATION} row; {@link #confirm} locks that row and the
  * day's usage counter before moving money, so two concurrent confirms on the same transfer
  * serialise instead of both executing. Confirming an already-{@code COMPLETED} transfer is a no-op
  * that returns the original result, so a retried confirm (client timeout, double click) can never
- * execute twice (NFR-R2).
+ * execute twice.
  */
 @Service
 @RequiredArgsConstructor

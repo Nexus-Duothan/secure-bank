@@ -40,7 +40,7 @@ public class SmsNotificationDispatcher implements NotificationDispatcher {
     String phone = recipientContact != null ? recipientContact : "+94770000000";
     if (isSecurityFallback) {
       log.info(
-        "[SMS DISPATCHER - GUARANTEED SECURITY FALLBACK (FR-29)] Sent priority SMS to {} for user {}: [{}] {}",
+        "[SMS DISPATCHER - GUARANTEED SECURITY FALLBACK] Sent priority SMS to {} for user {}: [{}] {}",
         phone,
         userId,
         title,

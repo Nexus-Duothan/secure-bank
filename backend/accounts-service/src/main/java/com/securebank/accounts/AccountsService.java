@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Accounts, cards and the transaction ledger (FR-09, FR-10, FR-30).
+ * Accounts, cards and the transaction ledger.
  *
  * <p>Every figure returned here is read from the database and scoped to the caller resolved from
  * the gateway identity header. A customer who has just registered owns no accounts, so the API
@@ -62,7 +62,7 @@ public class AccountsService {
   private static final String FALLBACK_HOLDER_NAME = "Account holder";
 
   /**
-   * The bank's account product catalogue (FR-09). A customer can only open an
+   * The bank's account product catalogue. A customer can only open an
    * account against one of these, so the product is picked from this list rather
    * than typed in.
    */
@@ -269,7 +269,7 @@ public class AccountsService {
   }
 
   // --------------------------------------------------------------------
-  // Freeze / unfreeze (FR-10)
+  // Freeze / unfreeze
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -336,7 +336,7 @@ public class AccountsService {
   }
 
   // --------------------------------------------------------------------
-  // Linking an existing account (FR-09)
+  // Linking an existing account
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -426,7 +426,7 @@ public class AccountsService {
   }
 
   // --------------------------------------------------------------------
-  // Opening a new account (FR-09)
+  // Opening a new account
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -515,7 +515,7 @@ public class AccountsService {
   }
 
   // --------------------------------------------------------------------
-  // Linking a credit card the bank already issued (FR-09)
+  // Linking a credit card the bank already issued
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -598,7 +598,7 @@ public class AccountsService {
   // --------------------------------------------------------------------
 
   /**
-   * The bank-wide transaction journal (FR-30) behind the admin audit view, newest first. It is
+   * The bank-wide transaction journal behind the admin audit view, newest first. It is
    * read straight off the ledger, so it only ever shows movements that really happened.
    */
   @Transactional(readOnly = true)
@@ -818,7 +818,7 @@ public class AccountsService {
   }
 
   // --------------------------------------------------------------------
-  // Statement (FR-11)
+  // Statement
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)

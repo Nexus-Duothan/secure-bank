@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Relays one-time codes raised by the other services (accounts, user) out to the
- * customer over SMS and email (FR-04, FR-29).
+ * customer over SMS and email.
  *
  * <p>The code is delivered straight through the channel dispatchers rather than
  * {@link MultiChannelNotificationService}: an OTP is a transient credential, so it is

@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Polls for due scheduled payments (FR-19) and hands each off to
+ * Polls for due scheduled payments and hands each off to
  * {@link ScheduledTransferExecutionService} for a locked, transactional execution. This method
  * itself stays un-transactional and the poll query is a cheap non-locking read. Business failures
  * inside a single schedule's execution are caught and recorded by

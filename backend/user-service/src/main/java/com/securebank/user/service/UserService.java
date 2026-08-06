@@ -42,7 +42,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Profile management (FR-07) and role administration (FR-08).
+ * Profile management and role administration.
  *
  * <p>Every self-service mutation is staged as a {@link PendingUserChange} and only applied once the
  * customer confirms it with the current code from their authenticator app (TOTP), so a hijacked
@@ -69,7 +69,7 @@ public class UserService {
   private final ServiceHealthProbe serviceHealthProbe;
 
   // --------------------------------------------------------------------
-  // Self-service profile (FR-07)
+  // Self-service profile
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -190,7 +190,7 @@ public class UserService {
   }
 
   // --------------------------------------------------------------------
-  // Administration (FR-08)
+  // Administration
   // --------------------------------------------------------------------
 
   @Transactional(readOnly = true)
@@ -234,7 +234,7 @@ public class UserService {
     RoleUpdateRequest request
   ) {
     // Officers may service accounts but must not be able to mint administrators, and nobody may
-    // re-grade their own account (NFR-S5, least privilege).
+    // re-grade their own account.
     caller.requireAnyRole(Role.ADMIN);
     if (caller.is(userId)) {
       throw new AccessDeniedException("An administrator cannot change their own role");
@@ -264,8 +264,7 @@ public class UserService {
   }
 
   /**
-   * Stages a role change behind an OTP sent to the administrator performing it (FR-04: TOTP/OTP on
-   * high-risk actions). The change only lands via {@link #confirmAdminChange}.
+   * Stages a role change behind an OTP sent to the administrator performing it. The change only lands via {@link #confirmAdminChange}.
    */
   @Transactional
   public OtpChallengeResponse requestRoleChange(
