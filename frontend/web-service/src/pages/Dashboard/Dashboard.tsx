@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Button, Flex, Typography, theme } from 'antd';
+import { Avatar, Button, Card, Empty, Flex, Typography, theme } from 'antd';
 import {
   BellOutlined,
   SwapOutlined,
@@ -8,27 +8,21 @@ import {
   PercentageOutlined,
   CaretUpOutlined,
   SettingOutlined,
+  PlusOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import accountsService, { type Account, type Transaction } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import userService, { type UserProfile } from '../../api/userService';
 import TransactionRow from '../../components/TransactionRow';
 import BottomNav from '../../components/BottomNav';
-import {
-  DEMO_PROFILE,
-  DEMO_PRIMARY_ACCOUNT,
-  DEMO_RECENT_TRANSACTIONS,
-} from '../../mocks/demoCustomer';
 import { getProfilePhoto } from '../../utils/profilePhoto';
+import { DEFAULT_CURRENCY, currencyOf } from '../../utils/currency';
 
 const { Text, Title, Link } = Typography;
 
 const TEAL_TINT = '#DCEFEA';
 const NAVY = '#0B1B2B';
-
-const MOCK_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
-const MOCK_TRANSACTIONS: Transaction[] = DEMO_RECENT_TRANSACTIONS;
-const MOCK_PROFILE: UserProfile = DEMO_PROFILE;
 
 const QUICK_ACTIONS = [
   { key: 'transfer', label: 'Transfer', icon: <SwapOutlined />, path: '/transfer' },
@@ -36,16 +30,18 @@ const QUICK_ACTIONS = [
   { key: 'loans', label: 'Loans', icon: <PercentageOutlined />, path: '/loans/apply' },
 ];
 
-const getInitials = (name: string) =>
-  name
+const getInitials = (name?: string) => {
+  if (!name) return 'SB';
+  return name
     .split(' ')
     .filter(Boolean)
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
+};
 
-const formatCurrency = (value: number, currency: string) =>
+const formatCurrency = (value: number, currency: string = DEFAULT_CURRENCY) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -72,10 +68,10 @@ const formatMaskedAccountNumber = (accountNumber?: string, lastFourDigits?: stri
 const Dashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<UserProfile>(MOCK_PROFILE);
-  const [account, setAccount] = useState<Account>(MOCK_ACCOUNT);
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(getProfilePhoto(MOCK_PROFILE.id));
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,25 +85,37 @@ const Dashboard: React.FC = () => {
         }
       })
       .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
-        if (!cancelled) {
-          setProfilePhoto(getProfilePhoto(MOCK_PROFILE.id));
-        }
+        // Handled silently
       });
 
     accountsService
       .getAccounts()
       .then(async (data) => {
-        if (cancelled || data.length === 0) return;
-        const storedId = accountSelection.getSelectedAccountId();
-        const selected = data.find((item) => item.id === storedId) ?? data[0];
-        accountSelection.setSelectedAccountId(selected.id);
-        setAccount(selected);
-        const recent = await accountsService.getRecentTransactions(selected.id, 4);
-        if (!cancelled) setTransactions(recent);
+        if (cancelled) return;
+        if (data && data.length > 0) {
+          const storedId = accountSelection.getSelectedAccountId();
+          const selected = data.find((item) => item.id === storedId) ?? data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setAccount(selected);
+          try {
+            const recent = await accountsService.getRecentTransactions(selected.id, 4);
+            if (!cancelled) setTransactions(recent || []);
+          } catch {
+            if (!cancelled) setTransactions([]);
+          }
+        } else {
+          setAccount(null);
+          setTransactions([]);
+        }
       })
       .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
+        if (!cancelled) {
+          setAccount(null);
+          setTransactions([]);
+        }
+      })
+      .finally(() => {
+        // Fetch complete
       });
 
     return () => {
@@ -115,11 +123,10 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const fullName = profile.fullName;
-  const maskedAccountNumber = formatMaskedAccountNumber(
-    account.accountNumber,
-    account.lastFourDigits
-  );
+  const fullName = profile?.fullName ?? 'Valued Customer';
+  const maskedAccountNumber = account
+    ? formatMaskedAccountNumber(account.accountNumber, account.lastFourDigits)
+    : '';
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -169,84 +176,121 @@ const Dashboard: React.FC = () => {
           </Flex>
         </Flex>
 
-        <div
-          onClick={() => navigate(`/accounts/${account.id}`)}
-          style={{
-            background: NAVY,
-            borderRadius: 20,
-            padding: '24px 24px 28px',
-            marginBottom: 28,
-            cursor: 'pointer',
-          }}
-        >
-          <Flex justify="space-between" align="center">
-            <div>
-              <Text
-                style={{
-                  display: 'block',
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: 600,
-                }}
-              >
-                SecureBank
-              </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
-                {account.nickname}
-              </Text>
-            </div>
-            <Flex
-              align="center"
-              gap={6}
-              style={{
-                background: 'rgba(31,122,108,0.35)',
-                padding: '4px 12px',
-                borderRadius: 999,
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#3FD6B8',
-                  display: 'inline-block',
-                }}
-              />
-              <Text style={{ color: '#8FE3D2', fontSize: 12, fontWeight: 500 }}>
-                Verified {account.verifiedLabel}
-              </Text>
-            </Flex>
-          </Flex>
-
-          <Text
-            className="font-mono"
+        {account ? (
+          <div
+            onClick={() => navigate(`/accounts/${account.id}`)}
             style={{
-              display: 'block',
-              color: '#FFFFFF',
-              fontSize: 40,
-              fontWeight: 600,
-              margin: '16px 0 20px',
+              background: NAVY,
+              borderRadius: 20,
+              padding: '24px 24px 28px',
+              marginBottom: 28,
+              cursor: 'pointer',
             }}
           >
-            {formatCurrency(account.balance, account.currency)}
-          </Text>
-
-          <Flex justify="space-between" align="center">
-            <Flex align="center" gap={6}>
-              <CaretUpOutlined style={{ color: '#3FD6B8', fontSize: 12 }} />
-              <Text style={{ color: '#3FD6B8', fontSize: 13, fontWeight: 500 }}>
-                {account.monthlyChangePercent}% this month
-              </Text>
+            <Flex justify="space-between" align="center">
+              <div>
+                <Text
+                  style={{
+                    display: 'block',
+                    color: '#FFFFFF',
+                    fontSize: 16,
+                    fontWeight: 600,
+                  }}
+                >
+                  SecureBank
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
+                  {account.nickname || 'Primary Account'}
+                </Text>
+              </div>
+              <Flex
+                align="center"
+                gap={6}
+                style={{
+                  background: 'rgba(31,122,108,0.35)',
+                  padding: '4px 12px',
+                  borderRadius: 999,
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#3FD6B8',
+                    display: 'inline-block',
+                  }}
+                />
+                <Text style={{ color: '#8FE3D2', fontSize: 12, fontWeight: 500 }}>
+                  {account.verifiedLabel || 'Active'}
+                </Text>
+              </Flex>
             </Flex>
+
             <Text
               className="font-mono"
-              style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, letterSpacing: 1 }}
+              style={{
+                display: 'block',
+                color: '#FFFFFF',
+                fontSize: 40,
+                fontWeight: 600,
+                margin: '16px 0 20px',
+              }}
             >
-              {maskedAccountNumber}
+              {formatCurrency(account.balance, currencyOf(account))}
             </Text>
-          </Flex>
-        </div>
+
+            <Flex justify="space-between" align="center">
+              <Flex align="center" gap={6}>
+                <CaretUpOutlined style={{ color: '#3FD6B8', fontSize: 12 }} />
+                <Text style={{ color: '#3FD6B8', fontSize: 13, fontWeight: 500 }}>
+                  {account.monthlyChangePercent ?? 0}% this month
+                </Text>
+              </Flex>
+              <Text
+                className="font-mono"
+                style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, letterSpacing: 1 }}
+              >
+                {maskedAccountNumber}
+              </Text>
+            </Flex>
+          </div>
+        ) : (
+          <Card
+            style={{
+              background: NAVY,
+              borderRadius: 20,
+              border: 'none',
+              marginBottom: 28,
+              padding: '12px 8px',
+            }}
+          >
+            <Flex vertical align="center" justify="center" gap={12} style={{ textAlign: 'center' }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 600 }}>
+                No Active Bank Account
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, maxWidth: 320 }}>
+                Open a Savings or Checking account to start depositing funds and making
+                transactions.
+              </Text>
+              <Button
+                type="primary"
+                size="large"
+                icon={<PlusOutlined />}
+                onClick={() => navigate('/accounts/open')}
+                style={{
+                  borderRadius: 12,
+                  marginTop: 8,
+                  fontWeight: 600,
+                  height: 44,
+                  padding: '0 24px',
+                }}
+              >
+                Open New Account
+              </Button>
+            </Flex>
+          </Card>
+        )}
 
         <Flex justify="space-between" style={{ marginBottom: 32 }}>
           {QUICK_ACTIONS.map((action) => (
@@ -287,12 +331,14 @@ const Dashboard: React.FC = () => {
           >
             Recent activity
           </Title>
-          <Link
-            onClick={() => navigate('/activity')}
-            style={{ color: token.colorPrimary, fontWeight: 500 }}
-          >
-            View all
-          </Link>
+          {transactions.length > 0 && (
+            <Link
+              onClick={() => navigate('/activity')}
+              style={{ color: token.colorPrimary, fontWeight: 500 }}
+            >
+              View all
+            </Link>
+          )}
         </Flex>
 
         <div
@@ -301,21 +347,31 @@ const Dashboard: React.FC = () => {
             borderRadius: 16,
             border: `1px solid ${token.colorBorder}`,
             overflow: 'hidden',
+            padding: transactions.length === 0 ? '24px 16px' : undefined,
           }}
         >
-          {transactions.map((txn, index) => (
-            <TransactionRow
-              key={txn.id}
-              avatarLabel={txn.merchant.charAt(0).toUpperCase()}
-              merchant={txn.merchant}
-              category={txn.category}
-              date={txn.date}
-              amount={txn.amount}
-              currency={account.currency}
-              verified={txn.verified}
-              showDivider={index < transactions.length - 1}
+          {transactions.length > 0 ? (
+            transactions.map((txn, index) => (
+              <TransactionRow
+                key={txn.id}
+                avatarLabel={txn.merchant ? txn.merchant.charAt(0).toUpperCase() : 'T'}
+                merchant={txn.merchant || 'Transaction'}
+                category={txn.category || 'General'}
+                date={txn.date || ''}
+                amount={txn.amount}
+                currency={currencyOf(account)}
+                verified={txn.verified}
+                showDivider={index < transactions.length - 1}
+              />
+            ))
+          ) : (
+            <Empty
+              image={<InboxOutlined style={{ fontSize: 40, color: token.colorTextDisabled }} />}
+              description={
+                <Text style={{ color: token.colorTextDescription }}>No recent activity found</Text>
+              }
             />
-          ))}
+          )}
         </div>
       </div>
 

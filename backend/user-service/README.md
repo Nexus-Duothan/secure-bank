@@ -42,7 +42,8 @@ Every endpoint resolves the caller from the bearer access token.
 - forwarded `X-User-Id` and `X-User-Role` headers are treated only as consistency checks
 - direct header spoofing is rejected
 
-Header-less demo impersonation is also off by default. Only enable it deliberately for local prototyping:
+Header-less impersonation of the oldest profile is off by default. Only enable it deliberately for
+local prototyping:
 
 ```powershell
 $env:SECUREBANK_USER_ALLOW_UNAUTHENTICATED_DEMO_CALLER="true"
@@ -75,31 +76,24 @@ Administration routes live under `/api/v1/users/admin`.
 
 ---
 
-## OTP Behavior
+## Confirmation codes
 
-Each challenge issues a six-digit code, stores only a BCrypt digest, and burns the challenge after too many wrong attempts.
-
-OTP echoing is off by default. If you need the browser-only local demo mode, opt in explicitly:
-
-```powershell
-$env:SECUREBANK_USER_OTP_EXPOSE_CODE="true"
-```
-
-When that flag is enabled, the generated code is returned in the challenge response so the UI can display it. Otherwise, delivery belongs to the notification flow.
+Every staged change is confirmed with the current six-digit code from the customer's authenticator
+app, checked by `totp-service`. Nothing generates, stores or returns a code here: `demoCode` in the
+challenge response is always `null`, and the challenge is burned after too many wrong attempts.
 
 ---
 
 ## Configuration
 
-| Property                                                     | Default                 | Purpose                                             |
-| :----------------------------------------------------------- | :---------------------- | :-------------------------------------------------- |
-| `securebank.user.otp.ttl`                                    | `PT5M`                  | Challenge lifetime                                  |
-| `securebank.user.otp.max-attempts`                           | `5`                     | Wrong codes before a challenge is burned            |
-| `securebank.user.otp.expose-code`                            | `false`                 | Return the generated OTP in the response            |
-| `securebank.notification.service-url`                        | `http://localhost:8088` | Notification service base URL for OTP dispatch      |
-| `securebank.user.security.allow-unauthenticated-demo-caller` | `false`                 | Resolve token-less requests to the seeded demo user |
-| `securebank.user.cors.allowed-origins`                       | `localhost:3000/5173`   | Direct browser access during development            |
-| `jwt.secret`                                                 | shared local dev secret | JWT validation secret                               |
+| Property                                                     | Default                 | Purpose                                           |
+| :----------------------------------------------------------- | :---------------------- | :------------------------------------------------ |
+| `securebank.user.otp.ttl`                                    | `PT5M`                  | Challenge lifetime                                |
+| `securebank.user.otp.max-attempts`                           | `5`                     | Wrong codes before a challenge is burned          |
+| `securebank.notification.service-url`                        | `http://localhost:8088` | Notification service base URL for OTP dispatch    |
+| `securebank.user.security.allow-unauthenticated-demo-caller` | `false`                 | Resolve token-less requests to the oldest profile |
+| `securebank.user.cors.allowed-origins`                       | `localhost:3000/5173`   | Direct browser access during development          |
+| `jwt.secret`                                                 | shared local dev secret | JWT validation secret                             |
 
 Database credentials come from:
 

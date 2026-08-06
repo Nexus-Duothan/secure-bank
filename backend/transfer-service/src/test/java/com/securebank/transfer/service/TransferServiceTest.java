@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.securebank.transfer.client.AccountSnapshot;
 import com.securebank.transfer.client.AccountsClient;
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.config.TransferServiceProperties;
 import com.securebank.transfer.dto.TransferQuoteRequest;
 import com.securebank.transfer.dto.TransferResponse;
@@ -56,6 +57,9 @@ class TransferServiceTest {
   @Mock
   private TransferEventPublisher eventPublisher;
 
+  @Mock
+  private TotpClient totpClient;
+
   private TransferService transferService;
 
   @BeforeEach
@@ -77,7 +81,8 @@ class TransferServiceTest {
       payeeRepository,
       accountsClient,
       properties,
-      eventPublisher
+      eventPublisher,
+      totpClient
     );
   }
 

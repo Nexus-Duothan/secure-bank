@@ -124,7 +124,8 @@ const LinkCreditCard: React.FC = () => {
         <Flex gap={10} style={{ margin: '24px 4px 0' }}>
           <CreditCardOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
           <Text style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-            Only a SecureBank credit card held in your name can be linked.
+            Only a SecureBank credit card held in your name can be linked. You confirm the link with
+            the current six digit code from your authenticator app.
           </Text>
         </Flex>
       </div>

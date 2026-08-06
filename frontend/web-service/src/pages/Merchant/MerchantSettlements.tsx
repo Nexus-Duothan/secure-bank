@@ -4,7 +4,6 @@ import { WalletOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { MERCHANT_NAV } from '../../components/staffNavs';
 import paymentsService, { type MerchantSettlement } from '../../api/paymentsService';
-import { DEMO_MERCHANT_SETTLEMENTS } from '../../mocks/demoStaff';
 
 const { Text, Title } = Typography;
 
@@ -18,17 +17,17 @@ const formatAmount = (value: number, currency: string) =>
 /** Weekly settlement payouts: what was collected, the fee, and what was paid out. */
 const MerchantSettlements: React.FC = () => {
   const { token } = theme.useToken();
-  const [settlements, setSettlements] = useState<MerchantSettlement[]>(DEMO_MERCHANT_SETTLEMENTS);
+  const [settlements, setSettlements] = useState<MerchantSettlement[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     paymentsService
       .getMerchantSettlements()
       .then((data) => {
-        if (!cancelled) setSettlements(data);
+        if (!cancelled) setSettlements(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setSettlements([]);
       });
     return () => {
       cancelled = true;

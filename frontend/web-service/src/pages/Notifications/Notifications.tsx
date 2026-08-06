@@ -6,13 +6,10 @@ import notificationService, {
   type Notification,
   type NotificationType,
 } from '../../api/notificationService';
-import { DEMO_NOTIFICATIONS } from '../../mocks/demoCustomer';
 
 const { Text, Title, Link } = Typography;
 
 const SLATE = '#5B6B82';
-
-const MOCK_NOTIFICATIONS: Notification[] = DEMO_NOTIFICATIONS;
 
 const accentColor = (type: NotificationType, token: ReturnType<typeof theme.useToken>['token']) => {
   switch (type) {
@@ -41,17 +38,17 @@ const groupByLabel = (notifications: Notification[]) => {
 const Notifications: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     notificationService
       .getNotifications()
       .then((data) => {
-        if (!cancelled) setNotifications(data);
+        if (!cancelled) setNotifications(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
+        if (!cancelled) setNotifications([]);
       });
     return () => {
       cancelled = true;

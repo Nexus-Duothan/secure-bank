@@ -20,7 +20,7 @@ public class AccountsRestClient implements AccountsClient {
     try {
       AccountSnapshot snapshot = restClient
         .get()
-        .uri("/api/v1/accounts/{id}", accountId)
+        .uri("/internal/v1/accounts/{id}", accountId)
         .retrieve()
         .body(AccountSnapshot.class);
       if (snapshot == null) {

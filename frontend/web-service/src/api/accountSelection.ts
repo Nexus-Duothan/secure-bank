@@ -1,8 +1,11 @@
 const SELECTED_ACCOUNT_KEY = 'sb_selected_account_id';
-const DEFAULT_ACCOUNT_ID = 'acc-demo-primary';
 
 export const accountSelection = {
-  getSelectedAccountId: () => localStorage.getItem(SELECTED_ACCOUNT_KEY) ?? DEFAULT_ACCOUNT_ID,
+  /**
+   * The account the customer last looked at, or null when they have not picked one yet. There is
+   * no default id: which accounts exist is decided by the backend, per signed-in customer.
+   */
+  getSelectedAccountId: (): string | null => localStorage.getItem(SELECTED_ACCOUNT_KEY),
   setSelectedAccountId: (accountId: string) => {
     localStorage.setItem(SELECTED_ACCOUNT_KEY, accountId);
   },

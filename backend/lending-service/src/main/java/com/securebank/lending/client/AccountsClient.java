@@ -1,11 +1,9 @@
 package com.securebank.lending.client;
 
 /**
- * Seam onto accounts-service. It currently answers from hardcoded demo data (no real ledger,
- * and no debit/mutate endpoint of any kind yet), so balance checks here are advisory rather
- * than authoritative until that service grows a persistent ledger — the same limitation
- * transfer-service documents for its own AccountsClient. Once accounts-service exposes a real
- * debit contract, only the implementation behind this interface needs to change.
+ * Seam onto accounts-service, which owns the ledger. Lending only reads balances through it today:
+ * disbursements and installment collections are still recorded on the loan rather than posted to
+ * the customer's account, so a balance check here is advisory rather than a reservation.
  */
 public interface AccountsClient {
   /**

@@ -1,5 +1,6 @@
 package com.securebank.auth.service;
 
+import com.securebank.auth.client.TotpClient;
 import com.securebank.auth.dto.KycApplicationResponse;
 import com.securebank.auth.dto.KycSubmissionRequest;
 import com.securebank.auth.dto.OfficerKycReviewRequest;
@@ -23,6 +24,7 @@ public class KycService {
 
   private final KycApplicationRepository kycApplicationRepository;
   private final UserCredentialRepository userCredentialRepository;
+  private final TotpClient totpClient;
 
   @Transactional
   public KycApplicationResponse submitKyc(UUID userId, KycSubmissionRequest request) {
@@ -67,6 +69,15 @@ public class KycService {
     String officerUsername,
     OfficerKycReviewRequest request
   ) {
+    UUID officerId;
+    try {
+      officerId = UUID.fromString(officerUsername);
+    } catch (IllegalArgumentException exception) {
+      throw new IllegalArgumentException("Invalid officer identity");
+    }
+    if (!totpClient.verify(officerId, request.getTotpCode())) {
+      throw new IllegalArgumentException("Invalid authenticator code");
+    }
     KycApplication application = kycApplicationRepository
       .findById(applicationId)
       .orElseThrow(() -> new IllegalArgumentException("KYC application not found"));

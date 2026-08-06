@@ -46,7 +46,7 @@ class CallerIdentityArgumentResolverTest {
   void setUp() {
     resolver = new CallerIdentityArgumentResolver(
       userProfileRepository,
-      properties(false, false),
+      properties(false),
       JWT_SECRET
     );
   }
@@ -117,7 +117,7 @@ class CallerIdentityArgumentResolverTest {
 
     CallerIdentityArgumentResolver demoResolver = new CallerIdentityArgumentResolver(
       userProfileRepository,
-      properties(true, true),
+      properties(true),
       JWT_SECRET
     );
 
@@ -132,11 +132,10 @@ class CallerIdentityArgumentResolverTest {
     assertThat(caller.role()).isEqualTo(Role.CUSTOMER);
   }
 
-  private UserServiceProperties properties(boolean seedDemoData, boolean allowDemoCaller) {
+  private UserServiceProperties properties(boolean allowDemoCaller) {
     return new UserServiceProperties(
-      seedDemoData,
       new UserServiceProperties.Cors(List.of("http://localhost:5173")),
-      new UserServiceProperties.Otp(null, 5, false),
+      new UserServiceProperties.Otp(null, 5),
       new UserServiceProperties.Security(allowDemoCaller)
     );
   }

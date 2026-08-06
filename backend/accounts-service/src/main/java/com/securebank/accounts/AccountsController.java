@@ -19,6 +19,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Customer facing account endpoints. Every route is answered for the caller the gateway
+ * authenticated ({@code X-User-Id}); there is no default or shared account.
+ */
 @RestController
 @RequestMapping("/api/v1/accounts")
 @RequiredArgsConstructor
@@ -41,19 +45,20 @@ public class AccountsController {
   }
 
   @GetMapping("/primary/transactions")
-  public List<TransactionResponse> getRecentTransactions(
+  public List<TransactionResponse> getPrimaryAccountTransactions(
     @RequestParam(defaultValue = "4") int limit,
     @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.getRecentTransactions(limit);
+    return accountsService.getPrimaryAccountTransactions(callerUserId, limit);
   }
 
   @GetMapping("/{id}/transactions/recent")
   public List<TransactionResponse> getRecentTransactions(
     @PathVariable String id,
-    @RequestParam(defaultValue = "4") int limit
+    @RequestParam(defaultValue = "4") int limit,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.getRecentTransactions(id, limit);
+    return accountsService.getRecentTransactions(callerUserId, id, limit);
   }
 
   @GetMapping("/products")
@@ -64,46 +69,60 @@ public class AccountsController {
   }
 
   @PostMapping("/link")
-  public OtpChallengeResponse requestAccountLink(@Valid @RequestBody LinkAccountRequest request) {
-    return accountsService.requestAccountLink(request);
+  public OtpChallengeResponse requestAccountLink(
+    @Valid @RequestBody LinkAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.requestAccountLink(request, callerUserId);
   }
 
   @PostMapping("/link/{changeRequestId}/confirm")
   public LinkedAccountResponse confirmAccountLink(
     @PathVariable UUID changeRequestId,
-    @Valid @RequestBody ConfirmChangeRequest request
+    @Valid @RequestBody ConfirmChangeRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.confirmAccountLink(changeRequestId, request);
+    return accountsService.confirmAccountLink(callerUserId, changeRequestId, request);
   }
 
   @PostMapping("/open")
   public OtpChallengeResponse requestAccountOpening(
-    @Valid @RequestBody OpenAccountRequest request
+    @Valid @RequestBody OpenAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestAccountOpening(request);
+    return accountsService.requestAccountOpening(request, callerUserId);
   }
 
   @PostMapping("/open/{changeRequestId}/confirm")
   public LinkedAccountResponse confirmAccountOpening(
     @PathVariable UUID changeRequestId,
-    @Valid @RequestBody ConfirmChangeRequest request
+    @Valid @RequestBody ConfirmChangeRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId,
+    @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
   ) {
-    return accountsService.confirmAccountOpening(changeRequestId, request);
+    return accountsService.confirmAccountOpening(
+      callerUserId,
+      authorization,
+      changeRequestId,
+      request
+    );
   }
 
   @PostMapping("/cards/link")
   public OtpChallengeResponse requestCreditCardLink(
-    @Valid @RequestBody LinkCreditCardRequest request
+    @Valid @RequestBody LinkCreditCardRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestCreditCardLink(request);
+    return accountsService.requestCreditCardLink(request, callerUserId);
   }
 
   @PostMapping("/cards/link/{changeRequestId}/confirm")
   public LinkedCardResponse confirmCreditCardLink(
     @PathVariable UUID changeRequestId,
-    @Valid @RequestBody ConfirmChangeRequest request
+    @Valid @RequestBody ConfirmChangeRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.confirmCreditCardLink(changeRequestId, request);
+    return accountsService.confirmCreditCardLink(callerUserId, changeRequestId, request);
   }
 
   @GetMapping("/{id}/transactions")
@@ -117,9 +136,11 @@ public class AccountsController {
     @RequestParam(required = false) BigDecimal minAmount,
     @RequestParam(required = false) BigDecimal maxAmount,
     @RequestParam(required = false) String type,
-    @RequestParam(defaultValue = "false") boolean flaggedOnly
+    @RequestParam(defaultValue = "false") boolean flaggedOnly,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
     return accountsService.getTransactionHistory(
+      callerUserId,
       id,
       direction,
       dateFrom,
@@ -132,36 +153,47 @@ public class AccountsController {
   }
 
   @GetMapping("/{id}")
-  public AccountDetailResponse getAccountById(@PathVariable String id) {
-    return accountsService.getAccountById(id);
+  public AccountDetailResponse getAccountById(
+    @PathVariable String id,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.getAccountById(callerUserId, id);
   }
 
   @PostMapping("/{id}/freeze")
   public OtpChallengeResponse requestFreeze(
     @PathVariable String id,
-    @Valid @RequestBody FreezeAccountRequest request
+    @Valid @RequestBody FreezeAccountRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.requestFreeze(id, request);
+    return accountsService.requestFreeze(id, request, callerUserId);
   }
 
   @PostMapping("/{id}/unfreeze")
-  public OtpChallengeResponse requestUnfreeze(@PathVariable String id) {
-    return accountsService.requestUnfreeze(id);
+  public OtpChallengeResponse requestUnfreeze(
+    @PathVariable String id,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
+    return accountsService.requestUnfreeze(id, callerUserId);
   }
 
   @PostMapping("/changes/{changeRequestId}/confirm")
   public AccountDetailResponse confirmChange(
     @PathVariable UUID changeRequestId,
-    @Valid @RequestBody ConfirmChangeRequest request
+    @Valid @RequestBody ConfirmChangeRequest request,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
   ) {
-    return accountsService.confirmChange(changeRequestId, request);
+    return accountsService.confirmChange(callerUserId, changeRequestId, request);
   }
 
   @GetMapping("/{id}/statement")
-  public ResponseEntity<byte[]> downloadStatement(@PathVariable String id) {
+  public ResponseEntity<byte[]> downloadStatement(
+    @PathVariable String id,
+    @RequestHeader(value = "X-User-Id", required = false) String callerUserId
+  ) {
     return ResponseEntity.ok()
       .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"securebank-statement.pdf\"")
       .contentType(MediaType.APPLICATION_PDF)
-      .body(accountsService.downloadStatement(id));
+      .body(accountsService.downloadStatement(callerUserId, id));
   }
 }

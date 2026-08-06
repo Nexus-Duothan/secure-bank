@@ -1,5 +1,6 @@
 import { createApiClient } from './createApiClient';
 import tokenStorage from './tokenStorage';
+import type { OtpChallenge } from '../types';
 
 const publicClient = createApiClient('/api/v1/auth', { attachAccessToken: false });
 const client = createApiClient('/api/v1/auth');
@@ -31,8 +32,6 @@ export interface AuthTokenResponse {
   status: string;
 }
 
-export type AccountType = 'SAVINGS' | 'CURRENT';
-
 export interface CreateAccountPayload {
   fullName: string;
   dateOfBirth: string;
@@ -40,7 +39,6 @@ export interface CreateAccountPayload {
   phoneNumber: string;
   address: string;
   nationalIdOrPassport: string;
-  accountType: AccountType;
   username: string;
   password: string;
 }
@@ -54,9 +52,21 @@ export interface CreateAccountResponse {
   message: string;
 }
 
+export interface VerifyRegistrationOtpResponse {
+  success: boolean;
+  userId: string;
+  username: string;
+  email: string;
+  message: string;
+}
+
 export interface RequestPasswordResetResponse {
   message: string;
-  token: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface ResetPasswordResponse {
@@ -82,9 +92,32 @@ export const authService = {
     publicClient
       .post<AuthTokenResponse>('/login/verify-mfa', payload)
       .then((response) => response.data),
+  resendOtp: (preAuthToken: string, usernameOrEmail?: string) =>
+    publicClient
+      .post<{ success: boolean; message: string }>('/resend-otp', {
+        preAuthToken,
+        usernameOrEmail,
+      })
+      .then((response) => response.data),
   createAccount: (payload: CreateAccountPayload) =>
     publicClient
       .post<CreateAccountResponse>('/register', payload)
+      .then((response) => response.data),
+  verifyRegistrationOtp: (userId: string, code: string) =>
+    publicClient
+      .post<VerifyRegistrationOtpResponse>('/register/verify-phone', { userId, code })
+      .then((response) => response.data),
+  /**
+   * Stages a password change for the signed-in customer. Nothing changes until the returned
+   * challenge is confirmed with the authenticator code.
+   */
+  requestPasswordChange: (payload: ChangePasswordPayload) =>
+    client
+      .post<OtpChallenge>('/password/change/request', payload)
+      .then((response) => response.data),
+  confirmPasswordChange: (changeRequestId: string, totpCode: string) =>
+    client
+      .post<{ message: string }>(`/password/change/${changeRequestId}/confirm`, { totpCode })
       .then((response) => response.data),
   requestPasswordReset: (email: string) =>
     publicClient

@@ -20,7 +20,6 @@ import { ADMIN_NAV } from '../../components/staffNavs';
 import adminService from '../../api/adminService';
 import sessionUser from '../../api/sessionUser';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_ADMIN_USERS } from '../../mocks/demoStaff';
 import type { Role, UserProfile, UserStatus } from '../../types';
 
 const { Text, Title } = Typography;
@@ -67,8 +66,7 @@ const AdminUsers: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [messageApi, messageContext] = message.useMessage();
-  const [users, setUsers] = useState<UserProfile[]>(DEMO_ADMIN_USERS);
-  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | Role>('ALL');
   const [selected, setSelected] = useState<UserProfile | null>(null);
@@ -92,12 +90,11 @@ const AdminUsers: React.FC = () => {
       .getUsers()
       .then((data) => {
         if (!cancelled) {
-          setUsers(data);
-          setUsingDemoData(false);
+          setUsers(data || []);
         }
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setUsers([]);
       });
     return () => {
       cancelled = true;
@@ -123,14 +120,6 @@ const AdminUsers: React.FC = () => {
 
   const handleRoleChange = async () => {
     if (!selected || nextRole === selected.role) return;
-    if (usingDemoData) {
-      setUsers((current) =>
-        current.map((user) => (user.id === selected.id ? { ...user, role: nextRole } : user))
-      );
-      messageApi.success('Role updated (demo data — with a live backend this needs an OTP).');
-      setSelected(null);
-      return;
-    }
     setSavingRole(true);
     try {
       const challenge = await adminService.requestRoleChange(selected.id, nextRole);
@@ -151,14 +140,6 @@ const AdminUsers: React.FC = () => {
 
   const handleStatusChange = async () => {
     if (!selected || nextStatus === selected.status) return;
-    if (usingDemoData) {
-      setUsers((current) =>
-        current.map((user) => (user.id === selected.id ? { ...user, status: nextStatus } : user))
-      );
-      messageApi.success('Status updated (demo data — with a live backend this needs an OTP).');
-      setSelected(null);
-      return;
-    }
     setSavingStatus(true);
     try {
       const challenge = await adminService.requestStatusChange(selected.id, nextStatus);
@@ -286,7 +267,7 @@ const AdminUsers: React.FC = () => {
                   showIcon
                   icon={<SafetyOutlined />}
                   message="High-security change"
-                  description="Role and status changes must be confirmed with a one-time code sent to you. Everything is written to the audit journal."
+                  description="Role and status changes must be confirmed with the current code from your authenticator app. Everything is written to the audit journal."
                 />
                 <div>
                   <Title level={5} style={{ margin: '0 0 6px' }}>

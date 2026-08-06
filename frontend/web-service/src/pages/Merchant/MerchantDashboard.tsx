@@ -8,7 +8,7 @@ import paymentsService, {
   type MerchantPayment,
   type MerchantSummary,
 } from '../../api/paymentsService';
-import { DEMO_MERCHANT_PAYMENTS, DEMO_MERCHANT_SUMMARY } from '../../mocks/demoStaff';
+import { DEFAULT_CURRENCY } from '../../utils/currency';
 
 const { Text, Title } = Typography;
 
@@ -24,12 +24,22 @@ const formatAmount = (value: number, currency: string) =>
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
+const DEFAULT_SUMMARY: MerchantSummary = {
+  merchantName: 'Merchant',
+  currency: DEFAULT_CURRENCY,
+  todayTotal: 0,
+  paymentsToday: 0,
+  refundsToday: 0,
+  pendingSettlement: 0,
+  nextPayoutDate: '',
+};
+
 /** Merchant business overview: today's takings and the latest payments in. */
 const MerchantDashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [summary, setSummary] = useState<MerchantSummary>(DEMO_MERCHANT_SUMMARY);
-  const [payments, setPayments] = useState<MerchantPayment[]>(DEMO_MERCHANT_PAYMENTS);
+  const [summary, setSummary] = useState<MerchantSummary>(DEFAULT_SUMMARY);
+  const [payments, setPayments] = useState<MerchantPayment[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,16 +50,16 @@ const MerchantDashboard: React.FC = () => {
         if (!cancelled) setSummary(data);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setSummary(DEFAULT_SUMMARY);
       });
 
     paymentsService
       .getMerchantPayments()
       .then((data) => {
-        if (!cancelled) setPayments(data);
+        if (!cancelled) setPayments(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setPayments([]);
       });
 
     return () => {
@@ -161,10 +171,10 @@ const MerchantDashboard: React.FC = () => {
               </Flex>
               <div style={{ minWidth: 0 }}>
                 <Text style={{ display: 'block', fontWeight: 600, fontSize: 14 }} ellipsis>
-                  {payment.payerName}
+                  Customer {payment.payerUserId.slice(0, 8)}
                 </Text>
                 <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                  {payment.method} • {formatTime(payment.timestamp)}
+                  {payment.channel} · {formatTime(payment.createdAt)}
                 </Text>
               </div>
             </Flex>

@@ -1,4 +1,4 @@
-import dayjs, { type Dayjs } from 'dayjs';
+import { type Dayjs } from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, DatePicker, Flex, InputNumber, Select, Typography, theme } from 'antd';
@@ -9,8 +9,6 @@ import accountsService, {
 } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import TransactionRow from '../../components/TransactionRow';
-import { DEMO_ACCOUNT_ACTIVITY } from '../../mocks/demoCustomer';
-
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
 
@@ -21,8 +19,6 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'in', label: 'In' },
   { key: 'out', label: 'Out' },
 ];
-
-const MOCK_TRANSACTIONS: AccountActivity[] = DEMO_ACCOUNT_ACTIVITY;
 
 const groupByDate = (transactions: AccountActivity[]) => {
   const groups: { label: string; items: AccountActivity[] }[] = [];
@@ -51,7 +47,7 @@ const TransactionHistory: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [accountId, setAccountId] = useState(accountSelection.getSelectedAccountId());
-  const [transactions, setTransactions] = useState<AccountActivity[]>(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<AccountActivity[]>([]);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedType, setSelectedType] = useState<string | undefined>();
@@ -73,7 +69,7 @@ const TransactionHistory: React.FC = () => {
         }
       })
       .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
+        // Leaves accountId unset, so the empty state below is shown.
       });
 
     return () => {
@@ -82,6 +78,12 @@ const TransactionHistory: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Nothing to ask for until the customer has an account.
+    if (!accountId) {
+      setTransactions([]);
+      return;
+    }
+
     let cancelled = false;
     accountsService
       .getTransactionHistory(accountId, {
@@ -99,39 +101,9 @@ const TransactionHistory: React.FC = () => {
         }
       })
       .catch(() => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setTransactions([]);
         }
-
-        let fallback = MOCK_TRANSACTIONS;
-        if (filter === 'in') {
-          fallback = fallback.filter((txn) => txn.amount > 0);
-        } else if (filter === 'out') {
-          fallback = fallback.filter((txn) => txn.amount < 0);
-        }
-        if (flaggedOnly) {
-          fallback = fallback.filter((txn) => txn.flagged);
-        }
-        if (selectedType) {
-          fallback = fallback.filter((txn) => txn.transactionType === selectedType);
-        }
-        if (amountMin !== null) {
-          fallback = fallback.filter((txn) => Math.abs(txn.amount) >= amountMin);
-        }
-        if (amountMax !== null) {
-          fallback = fallback.filter((txn) => Math.abs(txn.amount) <= amountMax);
-        }
-        if (dateRange?.[0]) {
-          fallback = fallback.filter(
-            (txn) => dayjs(txn.timestamp).valueOf() >= dateRange[0]!.startOf('day').valueOf()
-          );
-        }
-        if (dateRange?.[1]) {
-          fallback = fallback.filter(
-            (txn) => dayjs(txn.timestamp).valueOf() <= dateRange[1]!.endOf('day').valueOf()
-          );
-        }
-        setTransactions(fallback);
       });
 
     return () => {
@@ -140,7 +112,7 @@ const TransactionHistory: React.FC = () => {
   }, [accountId, amountMax, amountMin, dateRange, filter, flaggedOnly, selectedType]);
 
   const typeOptions = useMemo(() => {
-    const allItems = [...MOCK_TRANSACTIONS, ...transactions];
+    const allItems = transactions;
     return Array.from(new Set(allItems.map((txn) => txn.transactionType)))
       .sort()
       .map((value) => ({ label: formatTypeLabel(value), value }));

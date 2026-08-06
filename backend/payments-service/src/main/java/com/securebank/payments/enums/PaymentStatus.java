@@ -6,4 +6,5 @@ public enum PaymentStatus {
   FAILED,
   HELD_FOR_REVIEW,
   DECLINED,
+  REFUNDED,
 }

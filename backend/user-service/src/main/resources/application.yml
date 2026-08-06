@@ -28,16 +28,17 @@ securebank:
         - http://localhost:3000
         - http://localhost:5173
     otp:
+      # How long a staged change waits for the customer's authenticator code, and how many
+      # wrong codes burn the request.
       ttl: PT5M
       max-attempts: 5
-      # Local prototype default: echo the generated OTP back in the challenge response so the
-      # browser-only flow works without a live SMS/email delivery integration. Override to false
-      # when you want to test real notification-based delivery behavior.
-      expose-code: ${SECUREBANK_USER_OTP_EXPOSE_CODE:true}
     security:
       # Local prototype escape hatch only. Keep this false unless you explicitly want
       # header-less requests to impersonate the first seeded demo profile.
       allow-unauthenticated-demo-caller: ${SECUREBANK_USER_ALLOW_UNAUTHENTICATED_DEMO_CALLER:false}
+
+totp-service:
+  url: ${TOTP_SERVICE_URL:http://localhost:8082}
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}

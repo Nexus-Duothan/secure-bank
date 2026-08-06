@@ -26,6 +26,10 @@ spring:
       properties:
         max.poll.interval.ms: 300000
 
+accounts-service:
+  # The audit view reads the transaction journal straight from the ledger owner.
+  base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
+
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
 

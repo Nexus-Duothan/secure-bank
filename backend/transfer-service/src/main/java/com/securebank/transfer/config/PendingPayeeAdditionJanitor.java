@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Drops unconfirmed payee-addition challenges once they expire so the table does not grow without
- * bound and no stale OTP digest is retained longer than it is useful.
+ * bound and no stale pending change is retained longer than it is useful.
  */
 @Component
 @RequiredArgsConstructor

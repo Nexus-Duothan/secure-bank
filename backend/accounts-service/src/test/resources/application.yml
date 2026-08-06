@@ -1,10 +1,26 @@
+server:
+  port: 0
+
 spring:
+  # H2 in PostgreSQL mode with the real migrations applied and `validate` on, so the tests fail if
+  # the schema and the entities ever drift apart.
   datasource:
-    url: jdbc:h2:mem:securebanktest;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:securebanktest;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
     username: sa
     password:
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_accounts
+
+totp-service:
+  url: http://localhost:8082
+
+user-service:
+  url: http://localhost:8083

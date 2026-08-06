@@ -62,6 +62,36 @@ class ApiGatewayIntegrationTest {
   }
 
   @Test
+  void registrationPhoneVerificationEndpoint_BypassesAuthFilter() {
+    webTestClient
+      .post()
+      .uri("/api/v1/auth/register/verify-phone")
+      .exchange()
+      .expectStatus()
+      .value(status -> org.junit.jupiter.api.Assertions.assertNotEquals(401, status));
+  }
+
+  @Test
+  void totpSetupEndpoint_BypassesAuthFilterForNewlyRegisteredUsers() {
+    webTestClient
+      .post()
+      .uri("/api/v1/totp/setup/{userId}", UUID.randomUUID())
+      .exchange()
+      .expectStatus()
+      .value(status -> org.junit.jupiter.api.Assertions.assertNotEquals(401, status));
+  }
+
+  @Test
+  void totpEnableEndpoint_BypassesAuthFilterForNewlyRegisteredUsers() {
+    webTestClient
+      .post()
+      .uri("/api/v1/totp/enable")
+      .exchange()
+      .expectStatus()
+      .value(status -> org.junit.jupiter.api.Assertions.assertNotEquals(401, status));
+  }
+
+  @Test
   void protectedEndpoint_WithoutToken_Returns401Unauthorized() {
     webTestClient
       .get()

@@ -1,6 +1,7 @@
 package com.securebank.auth.service.notification;
 
 import java.time.Instant;
+import java.util.UUID;
 
 public interface LoginSmsAlertService {
   void sendSuccessfulLoginAlert(
@@ -16,5 +17,21 @@ public interface LoginSmsAlertService {
     String email,
     String fullName,
     Instant occurredAt
+  );
+
+  void sendPasswordResetLink(
+    UUID userId,
+    String email,
+    String fullName,
+    String resetUrl,
+    Instant expiresAt
+  );
+
+  void sendRegistrationOtpChallenge(
+    UUID userId,
+    String fullName,
+    String phoneNumber,
+    String email,
+    String code
   );
 }

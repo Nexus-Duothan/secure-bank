@@ -37,14 +37,13 @@ securebank:
       # FR-16: transfers at or above this amount are blocked while a payee is cooling off.
       payee-cooling-off-threshold: 50000
     otp:
+      # How long a staged payee waits for the caller's authenticator code, and how many wrong
+      # codes burn the request.
       ttl: PT5M
       max-attempts: 5
-      # Local prototype only: set this to true only when you explicitly want the generated OTP
-      # echoed back in the challenge response for a browser-only demo.
-      expose-code: ${SECUREBANK_TRANSFER_OTP_EXPOSE_CODE:false}
     accounts-client:
-      # accounts-service has no real ledger yet (mocked balances) - this base URL is the seam
-      # that starts returning live balances once that service is implemented.
+      # accounts-service owns the ledger; balances are read and movements are posted through its
+      # /internal routes, which the API gateway does not publish.
       base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
     security:
       # Local prototype escape hatch only, mirrors user-service. Keep false unless you explicitly
@@ -54,3 +53,6 @@ securebank:
 
 jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
+
+totp-service:
+  url: ${TOTP_SERVICE_URL:http://localhost:8082}

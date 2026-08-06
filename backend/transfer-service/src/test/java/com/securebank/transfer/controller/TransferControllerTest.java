@@ -2,6 +2,7 @@ package com.securebank.transfer.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securebank.transfer.client.AccountSnapshot;
 import com.securebank.transfer.client.AccountsClient;
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.dto.TransferQuoteRequest;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -48,6 +50,9 @@ class TransferControllerTest {
   @MockBean
   private AccountsClient accountsClient;
 
+  @MockBean
+  private TotpClient totpClient;
+
   private final UUID userId = UUID.randomUUID();
 
   @BeforeEach
@@ -55,6 +60,7 @@ class TransferControllerTest {
     when(accountsClient.getAccount(any())).thenReturn(
       new AccountSnapshot("acc-demo-primary", new BigDecimal("10000"), "LKR")
     );
+    when(totpClient.verify(userId, "123456")).thenReturn(true);
   }
 
   private String accessToken() {
@@ -134,10 +140,30 @@ class TransferControllerTest {
 
     mockMvc
       .perform(
-        post("/api/v1/transfers/{id}/confirm", transferId).header(
+        post("/api/v1/transfers/{id}/confirm", transferId)
+          .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"totpCode\":\"000000\"}")
+      )
+      .andExpect(status().isUnprocessableEntity())
+      .andExpect(jsonPath("$.message").value("Invalid authenticator code"));
+
+    mockMvc
+      .perform(
+        get("/api/v1/transfers/{id}", transferId).header(
           HttpHeaders.AUTHORIZATION,
           "Bearer " + accessToken()
         )
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.status").value("PENDING_CONFIRMATION"));
+
+    mockMvc
+      .perform(
+        post("/api/v1/transfers/{id}/confirm", transferId)
+          .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"totpCode\":\"123456\"}")
       )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("COMPLETED"))

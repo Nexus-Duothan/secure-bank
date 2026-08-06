@@ -31,11 +31,14 @@ jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
   access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:300}
 
+totp-service:
+  url: ${TOTP_SERVICE_URL:http://localhost:8082}
+
 securebank:
   lending:
     accounts-client:
-      # accounts-service has no real ledger yet (mocked balances, no debit endpoint at all) -
-      # this base URL is the seam that starts working once that service is implemented.
+      # accounts-service owns the ledger; balances are read from its /internal routes, which the
+      # API gateway does not publish.
       base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
     loan:
       # FR-22: platform-wide application bounds.

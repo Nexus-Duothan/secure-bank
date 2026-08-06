@@ -1,8 +1,14 @@
 package com.securebank.payments;
 
+import com.securebank.payments.dto.PaymentResponse;
+import com.securebank.payments.service.PaymentService;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,7 +24,10 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 @RequestMapping("/api/v1/payments/merchant")
+@RequiredArgsConstructor
 public class MerchantPaymentsController {
+
+  private final PaymentService paymentService;
 
   private static final List<MerchantPayment> PAYMENTS = List.of(
     new MerchantPayment(
@@ -80,11 +89,9 @@ public class MerchantPaymentsController {
   }
 
   @GetMapping("/payments")
-  public List<MerchantPayment> getPayments(
-    @RequestHeader(value = "X-User-Role", required = false) String role
-  ) {
-    requireMerchant(role);
-    return PAYMENTS;
+  @PreAuthorize("hasRole('MERCHANT')")
+  public List<PaymentResponse> getPayments(Authentication authentication) {
+    return paymentService.getMerchantPayments(UUID.fromString(authentication.getName()));
   }
 
   @GetMapping("/settlements")

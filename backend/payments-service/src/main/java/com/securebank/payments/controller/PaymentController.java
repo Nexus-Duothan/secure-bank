@@ -35,6 +35,17 @@ public class PaymentController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
+  @PostMapping("/bills")
+  @PreAuthorize("hasRole('CUSTOMER')")
+  public ResponseEntity<BillPaymentResponse> payBill(
+    Authentication authentication,
+    @Valid @RequestBody PayBillRequest request
+  ) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(
+      paymentService.payBill(UUID.fromString(authentication.getName()), request)
+    );
+  }
+
   @PostMapping("/qr/pay")
   public ResponseEntity<PaymentResponse> payByQr(
     Authentication authentication,
@@ -124,5 +135,17 @@ public class PaymentController {
     UUID officerId = UUID.fromString(authentication.getName());
     PaymentResponse response = paymentService.review(id, officerId, request);
     return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/merchant/payments/{id}/refund")
+  @PreAuthorize("hasRole('MERCHANT')")
+  public ResponseEntity<PaymentResponse> refundPayment(
+    Authentication authentication,
+    @PathVariable UUID id,
+    @Valid @RequestBody RefundRequest request
+  ) {
+    return ResponseEntity.ok(
+      paymentService.refund(UUID.fromString(authentication.getName()), id, request.totpCode())
+    );
   }
 }

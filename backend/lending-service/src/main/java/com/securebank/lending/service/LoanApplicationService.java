@@ -1,5 +1,6 @@
 package com.securebank.lending.service;
 
+import com.securebank.lending.client.TotpClient;
 import com.securebank.lending.config.LendingServiceProperties;
 import com.securebank.lending.dto.LoanApplicationRequest;
 import com.securebank.lending.dto.LoanApplicationResponse;
@@ -42,6 +43,7 @@ public class LoanApplicationService {
   private final AmortizationCalculator amortizationCalculator;
   private final LoanEventProducer loanEventProducer;
   private final LendingServiceProperties properties;
+  private final TotpClient totpClient;
 
   @Transactional
   public LoanApplicationResponse apply(UUID applicantUserId, LoanApplicationRequest request) {
@@ -111,6 +113,9 @@ public class LoanApplicationService {
     UUID applicationId,
     LoanApplicationReviewRequest request
   ) {
+    if (!totpClient.verify(officerId, request.totpCode())) {
+      throw new IllegalArgumentException("Invalid authenticator code");
+    }
     LoanApplication application = loanApplicationRepository
       .findById(applicationId)
       .orElseThrow(() ->

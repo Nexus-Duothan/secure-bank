@@ -10,6 +10,7 @@ const { Text, Title } = Typography;
 interface LinkAccountFormValues {
   accountNumber: string;
   nationalIdOrPassport: string;
+  nickname?: string;
 }
 
 const LinkAccount: React.FC = () => {
@@ -101,6 +102,15 @@ const LinkAccount: React.FC = () => {
               <Input size="large" autoComplete="off" placeholder="Identity document number" />
             </Form.Item>
 
+            <Form.Item
+              label="Account nickname (optional)"
+              name="nickname"
+              extra="Your own name for this account. Left empty, we keep the name the bank holds."
+              rules={[{ max: 120, message: 'Keep the nickname under 120 characters' }]}
+            >
+              <Input size="large" autoComplete="off" placeholder="e.g. Salary account" />
+            </Form.Item>
+
             <Button
               type="primary"
               size="large"
@@ -117,8 +127,7 @@ const LinkAccount: React.FC = () => {
         <Flex align="flex-start" gap={10} style={{ margin: '24px 4px 0' }}>
           <LockOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
           <Text style={{ color: token.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
-            The verification code is sent by SMS to the mobile number already registered with this
-            account.
+            You confirm this with the current six digit code from your authenticator app.
           </Text>
         </Flex>
       </div>

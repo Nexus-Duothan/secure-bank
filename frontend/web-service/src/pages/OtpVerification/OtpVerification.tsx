@@ -24,6 +24,10 @@ const RESEND_SECONDS = 30;
 interface LoginLocationState {
   preAuthToken?: string;
   usernameOrEmail?: string;
+  username?: string;
+  email?: string;
+  /** Set only by sign-up, the one flow still confirmed by an SMS code to the mobile number. */
+  registration?: boolean;
 }
 
 interface ProfileChangeLocationState {
@@ -69,6 +73,15 @@ interface AdminChangeLocationState {
   returnTo: string;
 }
 
+/**
+ * A password change staged from the profile page. There is no returnTo: once the password changes
+ * every session is revoked, so the only way on is signing in again with the new password.
+ */
+interface PasswordChangeLocationState {
+  flow: 'password-change';
+  challenge: OtpChallenge;
+}
+
 type LocationState =
   | LoginLocationState
   | ProfileChangeLocationState
@@ -76,7 +89,8 @@ type LocationState =
   | AccountLinkLocationState
   | AccountOpeningLocationState
   | CreditCardLinkLocationState
-  | AdminChangeLocationState;
+  | AdminChangeLocationState
+  | PasswordChangeLocationState;
 
 const OtpVerification: React.FC = () => {
   const navigate = useNavigate();
@@ -91,14 +105,17 @@ const OtpVerification: React.FC = () => {
   const accountOpeningFlow = changeRouteState?.flow === 'account-opening';
   const creditCardLinkFlow = changeRouteState?.flow === 'credit-card-link';
   const adminChangeFlow = changeRouteState?.flow === 'admin-change';
+  const passwordChangeFlow = changeRouteState?.flow === 'password-change';
   const accountOrProfileChangeFlow =
     profileChangeFlow ||
     accountChangeFlow ||
     accountLinkFlow ||
     accountOpeningFlow ||
     creditCardLinkFlow ||
-    adminChangeFlow;
+    adminChangeFlow ||
+    passwordChangeFlow;
   const preAuthToken = !accountOrProfileChangeFlow ? loginRouteState?.preAuthToken : undefined;
+  const registrationFlow = !accountOrProfileChangeFlow && loginRouteState?.registration === true;
   const accountOrProfileChallenge = changeRouteState?.challenge ?? null;
   const changeFlowBackPath = accountOpeningFlow
     ? '/accounts/open'
@@ -106,7 +123,11 @@ const OtpVerification: React.FC = () => {
       ? '/accounts/cards/link'
       : accountLinkFlow
         ? '/accounts/link'
-        : (changeRouteState?.returnTo ?? '/profile');
+        : passwordChangeFlow
+          ? '/profile?panel=password'
+          : changeRouteState && 'returnTo' in changeRouteState
+            ? changeRouteState.returnTo
+            : '/profile';
 
   const [otp, setOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -115,14 +136,7 @@ const OtpVerification: React.FC = () => {
 
   useEffect(() => {
     if (accountOrProfileChangeFlow && !accountOrProfileChallenge) {
-      const fallbackPath = accountOpeningFlow
-        ? '/accounts/open'
-        : creditCardLinkFlow
-          ? '/accounts/cards/link'
-          : accountLinkFlow
-            ? '/accounts/link'
-            : '/profile';
-      navigate(fallbackPath, { replace: true });
+      navigate(changeFlowBackPath, { replace: true });
       return;
     }
 
@@ -133,18 +147,24 @@ const OtpVerification: React.FC = () => {
     preAuthToken,
     accountOrProfileChallenge,
     accountOrProfileChangeFlow,
-    accountLinkFlow,
-    accountOpeningFlow,
-    creditCardLinkFlow,
+    changeFlowBackPath,
     navigate,
   ]);
 
-  const handleResend = () => {
-    if (accountOrProfileChangeFlow) return;
+  const handleResend = async () => {
+    // Only sign-up sends a code anywhere; every other flow reads it from the authenticator app.
+    if (!registrationFlow) return;
     if (!isFinished) return;
     setOtp('');
     setError(null);
-    restart();
+    try {
+      if (preAuthToken) {
+        await authService.resendOtp(preAuthToken, loginRouteState?.usernameOrEmail);
+      }
+      restart();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to resend verification code'));
+    }
   };
 
   const handleSubmit = async () => {
@@ -191,11 +211,30 @@ const OtpVerification: React.FC = () => {
           replace: true,
           state: { otpSuccessMessage: changeRouteState.successMessage },
         });
+      } else if (passwordChangeFlow && accountOrProfileChallenge) {
+        await authService.confirmPasswordChange(accountOrProfileChallenge.changeRequestId, otp);
+        // The change revoked every session, this one included, so start again at sign-in.
+        tokenStorage.clear();
+        sessionUser.clear();
+        navigate('/login', {
+          replace: true,
+          state: { setupCompleteMessage: 'Password changed. Sign in with your new password.' },
+        });
       } else if (adminChangeFlow && accountOrProfileChallenge) {
         await adminService.confirmChange(accountOrProfileChallenge.changeRequestId, otp);
         navigate(changeRouteState.returnTo, {
           replace: true,
           state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (registrationFlow && preAuthToken) {
+        const response = await authService.verifyRegistrationOtp(preAuthToken, otp);
+        navigate('/totp/setup', {
+          replace: true,
+          state: {
+            userId: response.userId,
+            username: response.username || loginRouteState?.username,
+            email: response.email || loginRouteState?.email || loginRouteState?.usernameOrEmail,
+          },
         });
       } else if (preAuthToken) {
         const response = await authService.verifyOtp({ preAuthToken, totpCode: otp });
@@ -241,26 +280,20 @@ const OtpVerification: React.FC = () => {
       >
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
 
-        {accountOrProfileChangeFlow && accountOrProfileChallenge?.message && (
-          <Text
-            style={{
-              display: 'block',
-              marginBottom: 16,
-              color: token.colorTextSecondary,
-              fontSize: 13,
-            }}
-          >
-            {accountOrProfileChallenge.message}
-          </Text>
-        )}
-        {accountOrProfileChangeFlow && accountOrProfileChallenge?.demoCode && (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message={`Demo code: ${accountOrProfileChallenge.demoCode}`}
-          />
-        )}
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 16,
+            color: token.colorTextSecondary,
+            fontSize: 13,
+          }}
+        >
+          {accountOrProfileChangeFlow
+            ? accountOrProfileChallenge?.message
+            : registrationFlow
+              ? 'Enter the six digit code we sent by SMS to your registered mobile number.'
+              : 'Open your authenticator app and enter the current six digit code.'}
+        </Text>
 
         <div className="otp-boxes">
           <Input.OTP
@@ -275,17 +308,7 @@ const OtpVerification: React.FC = () => {
         </div>
 
         <Flex style={{ marginTop: 20, marginBottom: 24 }}>
-          {accountOrProfileChangeFlow ? (
-            <>
-              <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
-              <Link
-                onClick={() => navigate(changeFlowBackPath, { replace: true })}
-                style={{ color: token.colorPrimary }}
-              >
-                Go back
-              </Link>
-            </>
-          ) : (
+          {registrationFlow ? (
             <>
               <Text style={{ color: token.colorTextSecondary }}>Didn't get a code?&nbsp;</Text>
               {isFinished ? (
@@ -298,6 +321,20 @@ const OtpVerification: React.FC = () => {
                 </Text>
               )}
             </>
+          ) : accountOrProfileChangeFlow ? (
+            <>
+              <Text style={{ color: token.colorTextSecondary }}>Code not working?&nbsp;</Text>
+              <Link
+                onClick={() => navigate(changeFlowBackPath, { replace: true })}
+                style={{ color: token.colorPrimary }}
+              >
+                Go back
+              </Link>
+            </>
+          ) : (
+            <Text style={{ color: token.colorTextSecondary }}>
+              The code changes every 30 seconds. Wait for a fresh one if it is about to expire.
+            </Text>
           )}
         </Flex>
 
@@ -317,9 +354,11 @@ const OtpVerification: React.FC = () => {
         text={
           accountOrProfileChangeFlow
             ? accountLinkFlow || creditCardLinkFlow
-              ? 'SecureBank confirms account ownership with one-time verification.'
-              : 'SecureBank protects account changes with one-time verification.'
-            : 'This device will be remembered for 30 days'
+              ? 'SecureBank confirms account ownership with your authenticator app.'
+              : 'SecureBank protects account changes with your authenticator app.'
+            : registrationFlow
+              ? 'This device will be remembered for 30 days'
+              : 'SecureBank signs you in with your authenticator app.'
         }
       />
     </AuthLayout>

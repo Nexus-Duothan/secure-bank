@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Flex, Form, Segmented, Select, Typography, theme } from 'antd';
+import { Alert, Button, Card, Flex, Form, Input, Segmented, Select, Typography, theme } from 'antd';
 import { LeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import accountsService, {
   type AccountProduct,
@@ -8,7 +8,6 @@ import accountsService, {
   type OpenAccountPayload,
 } from '../../api/accountsService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_ACCOUNT_PRODUCTS } from '../../mocks/demoCustomer';
 
 const { Text, Title } = Typography;
 
@@ -25,7 +24,7 @@ const OpenAccount: React.FC = () => {
   const [form] = Form.useForm<OpenAccountPayload>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [products, setProducts] = useState<AccountProduct[]>(DEMO_ACCOUNT_PRODUCTS);
+  const [products, setProducts] = useState<AccountProduct[]>([]);
   const [accountType, setAccountType] = useState<AccountType>('SAVINGS');
   const [productCode, setProductCode] = useState<string | undefined>(undefined);
 
@@ -34,10 +33,10 @@ const OpenAccount: React.FC = () => {
     accountsService
       .getAccountProducts()
       .then((data) => {
-        if (!cancelled && data.length > 0) setProducts(data);
+        if (!cancelled) setProducts(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setProducts([]);
       });
     return () => {
       cancelled = true;
@@ -186,6 +185,17 @@ const OpenAccount: React.FC = () => {
               />
             </Form.Item>
 
+            <Form.Item
+              label="Account nickname (optional)"
+              name="nickname"
+              extra={`Your own name for this account. Left empty, we use ${
+                selectedProduct ? selectedProduct.name : 'the product name'
+              }.`}
+              rules={[{ max: 120, message: 'Keep the nickname under 120 characters' }]}
+            >
+              <Input size="large" autoComplete="off" placeholder="e.g. Holiday savings" />
+            </Form.Item>
+
             <Button type="primary" size="large" block htmlType="submit" loading={submitting}>
               Review and verify
             </Button>
@@ -195,7 +205,7 @@ const OpenAccount: React.FC = () => {
         <Flex gap={10} style={{ margin: '24px 4px 0' }}>
           <SafetyCertificateOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
           <Text style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-            A debit card is issued for the new account after mobile verification.
+            A debit card is issued for the new account after authenticator app verification.
           </Text>
         </Flex>
       </div>

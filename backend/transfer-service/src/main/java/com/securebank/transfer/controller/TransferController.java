@@ -1,5 +1,6 @@
 package com.securebank.transfer.controller;
 
+import com.securebank.transfer.dto.ConfirmTransferRequest;
 import com.securebank.transfer.dto.TransferQuoteRequest;
 import com.securebank.transfer.dto.TransferResponse;
 import com.securebank.transfer.security.CallerIdentity;
@@ -36,8 +37,12 @@ public class TransferController {
 
   /** Executes a previously quoted transfer. Safe to retry: re-confirming a completed transfer just returns it. */
   @PostMapping("/{id}/confirm")
-  public ResponseEntity<TransferResponse> confirm(CallerIdentity caller, @PathVariable UUID id) {
-    return ResponseEntity.ok(transferService.confirm(caller, id));
+  public ResponseEntity<TransferResponse> confirm(
+    CallerIdentity caller,
+    @PathVariable UUID id,
+    @Valid @RequestBody ConfirmTransferRequest request
+  ) {
+    return ResponseEntity.ok(transferService.confirm(caller, id, request.totpCode()));
   }
 
   @GetMapping("/{id}")

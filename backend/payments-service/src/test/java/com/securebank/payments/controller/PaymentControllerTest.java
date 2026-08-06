@@ -11,6 +11,7 @@ import com.securebank.payments.dto.*;
 import com.securebank.payments.entity.Merchant;
 import com.securebank.payments.enums.Role;
 import com.securebank.payments.enums.UserStatus;
+import com.securebank.payments.repository.BillPaymentRepository;
 import com.securebank.payments.repository.MerchantRepository;
 import com.securebank.payments.repository.VendorPaymentRepository;
 import com.securebank.payments.security.JwtTokenProvider;
@@ -47,6 +48,9 @@ class PaymentControllerTest {
   private MerchantRepository merchantRepository;
 
   @Autowired
+  private BillPaymentRepository billPaymentRepository;
+
+  @Autowired
   private JwtTokenProvider tokenProvider;
 
   private UUID customerId;
@@ -59,6 +63,7 @@ class PaymentControllerTest {
   @BeforeEach
   void setUp() {
     vendorPaymentRepository.deleteAll();
+    billPaymentRepository.deleteAll();
     merchantRepository.deleteAll();
     FakeAuditRecoveryClient.reset();
 
@@ -252,7 +257,24 @@ class PaymentControllerTest {
       .andExpect(status().isOk())
       .andExpect(jsonPath("$[0].id").value(payment.getId().toString()));
 
-    PaymentReviewRequest reviewRequest = PaymentReviewRequest.builder().approve(true).build();
+    PaymentReviewRequest reviewRequest = PaymentReviewRequest.builder()
+      .approve(true)
+      .totpCode("123456")
+      .build();
+
+    mockMvc
+      .perform(
+        post("/api/v1/payments/officer/" + payment.getId() + "/review")
+          .header("Authorization", "Bearer " + officerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(
+              PaymentReviewRequest.builder().approve(true).totpCode("000000").build()
+            )
+          )
+      )
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.message").value("Invalid authenticator code"));
 
     mockMvc
       .perform(
@@ -341,6 +363,69 @@ class PaymentControllerTest {
       .perform(get("/api/v1/payments").header("Authorization", "Bearer " + customerToken))
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.content.length()").value(2));
+  }
+
+  @Test
+  void merchantRefundRequiresValidTotpAndChangesPaymentState() throws Exception {
+    String merchantCode = registerMerchant(merchantToken);
+    PaymentResponse payment = createCompletedPayment(merchantCode, BigDecimal.valueOf(500));
+
+    mockMvc
+      .perform(
+        post("/api/v1/payments/merchant/payments/" + payment.getId() + "/refund")
+          .header("Authorization", "Bearer " + merchantToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"totpCode\":\"000000\"}")
+      )
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.message").value("Invalid authenticator code"));
+
+    mockMvc
+      .perform(
+        post("/api/v1/payments/merchant/payments/" + payment.getId() + "/refund")
+          .header("Authorization", "Bearer " + merchantToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"totpCode\":\"123456\"}")
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.status").value("REFUNDED"));
+  }
+
+  @Test
+  void billPaymentRequiresValidTotpBeforeCreatingOrDebitingPayment() throws Exception {
+    String requestWithoutValidCode =
+      "{" +
+      "\"billerCategory\":\"Electricity\"," +
+      "\"billerName\":\"Ceylon Electricity Board\"," +
+      "\"referenceNumber\":\"CEB-1001\"," +
+      "\"amount\":1250.00," +
+      "\"fromAccountId\":\"acc-customer-001\"," +
+      "\"totpCode\":\"000000\"}";
+
+    mockMvc
+      .perform(
+        post("/api/v1/payments/bills")
+          .header("Authorization", "Bearer " + customerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(requestWithoutValidCode)
+      )
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.message").value("Invalid authenticator code"));
+
+    org.assertj.core.api.Assertions.assertThat(billPaymentRepository.count()).isZero();
+
+    mockMvc
+      .perform(
+        post("/api/v1/payments/bills")
+          .header("Authorization", "Bearer " + customerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(requestWithoutValidCode.replace("000000", "123456"))
+      )
+      .andExpect(status().isCreated())
+      .andExpect(jsonPath("$.status").value("COMPLETED"))
+      .andExpect(jsonPath("$.amount").value(1250.00))
+      // The customer never picks a currency: the bill is posted in the bank's own currency.
+      .andExpect(jsonPath("$.currency").value("LKR"));
   }
 
   @Test

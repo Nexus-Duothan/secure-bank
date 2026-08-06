@@ -23,24 +23,28 @@ import userService from '../../api/userService';
 import authService from '../../api/authService';
 import sessionUser, { homePathForRole } from '../../api/sessionUser';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_ADMIN_USERS } from '../../mocks/demoStaff';
+import { PasswordStrengthMeter } from '../../components/PasswordStrength';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_PATTERN } from '../../components/passwordRules';
 import type { NotificationPreferences, Role, UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
 
-const PORTAL_META: Record<
-  Exclude<Role, 'CUSTOMER'>,
-  { nav: StaffNavItem[]; roleLabel: string; demoUserId: string }
-> = {
-  ADMIN: { nav: ADMIN_NAV, roleLabel: 'ADMIN', demoUserId: 'usr-demo-005' },
-  BANK_OFFICER: { nav: OFFICER_NAV, roleLabel: 'BANK OFFICER', demoUserId: 'usr-demo-004' },
-  MERCHANT: { nav: MERCHANT_NAV, roleLabel: 'MERCHANT', demoUserId: 'usr-demo-003' },
+const PORTAL_META: Record<Exclude<Role, 'CUSTOMER'>, { nav: StaffNavItem[]; roleLabel: string }> = {
+  ADMIN: { nav: ADMIN_NAV, roleLabel: 'ADMIN' },
+  BANK_OFFICER: { nav: OFFICER_NAV, roleLabel: 'BANK OFFICER' },
+  MERCHANT: { nav: MERCHANT_NAV, roleLabel: 'MERCHANT' },
 };
 
 interface PersonalDetailsFormValues {
   fullName: string;
   email: string;
   phoneNumber: string;
+}
+
+interface PasswordFormValues {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 const getInitials = (name: string) =>
@@ -52,12 +56,28 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-/**
- * Own profile for bank-side users. Every security-critical edit — name, email,
- * mobile number, notification alerts — is staged by the backend and only lands
- * after the staff member confirms a one-time code (FR-04, FR-07). Password
- * changes go through the MFA-protected reset flow (FR-06).
- */
+const DEFAULT_PREFS: NotificationPreferences = {
+  email: true,
+  sms: true,
+  push: true,
+};
+
+const DEFAULT_STAFF_PROFILE: UserProfile = {
+  id: '',
+  fullName: 'Bank Staff',
+  email: '',
+  phoneNumber: '',
+  addressLine: '',
+  city: '',
+  country: '',
+  language: 'English',
+  role: 'ADMIN',
+  status: 'ACTIVE',
+  idVerified: true,
+  notificationPreferences: DEFAULT_PREFS,
+  linkedDevices: [],
+};
+
 const StaffProfile: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -71,15 +91,15 @@ const StaffProfile: React.FC = () => {
   const meta = PORTAL_META[role];
   const profilePath = `${homePathForRole(role)}/profile`;
 
-  const demoProfile =
-    DEMO_ADMIN_USERS.find((user) => user.id === meta.demoUserId) ?? DEMO_ADMIN_USERS[0];
-  const [profile, setProfile] = useState<UserProfile>(demoProfile);
-  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_STAFF_PROFILE);
   const [editOpen, setEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [prefs, setPrefs] = useState<NotificationPreferences>(demoProfile.notificationPreferences);
+  const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFS);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const newPassword = Form.useWatch('newPassword', passwordForm) ?? '';
 
   useEffect(() => {
     const state = location.state as { otpSuccessMessage?: string } | null;
@@ -97,11 +117,12 @@ const StaffProfile: React.FC = () => {
         if (!cancelled) {
           setProfile(data);
           setPrefs(data.notificationPreferences);
-          setUsingDemoData(false);
         }
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) {
+          setProfile(DEFAULT_STAFF_PROFILE);
+        }
       });
     return () => {
       cancelled = true;
@@ -114,11 +135,6 @@ const StaffProfile: React.FC = () => {
     prefs.push !== profile.notificationPreferences.push;
 
   const handleEditSubmit = async (values: PersonalDetailsFormValues) => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change real details (OTP required).');
-      setEditOpen(false);
-      return;
-    }
     setSubmitting(true);
     try {
       const challenge = await userService.requestProfileUpdate(values);
@@ -138,10 +154,6 @@ const StaffProfile: React.FC = () => {
   };
 
   const handleSavePrefs = async () => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change real alerts (OTP required).');
-      return;
-    }
     setSavingPrefs(true);
     try {
       const challenge = await userService.requestNotificationPreferencesUpdate(prefs);
@@ -160,19 +172,23 @@ const StaffProfile: React.FC = () => {
     }
   };
 
-  const handlePasswordChange = async () => {
-    if (usingDemoData) {
-      messageApi.info('Demo data — start the backend to change your password.');
-      return;
-    }
+  /**
+   * Stages the new password behind the authenticator step. The password only changes once the code
+   * is confirmed, which also ends every session and sends the user back to sign-in.
+   */
+  const handlePasswordChange = async (values: PasswordFormValues) => {
     setPasswordSubmitting(true);
     try {
-      const response = await authService.requestPasswordReset(profile.email);
-      messageApi.success('A secure password reset link has been issued for your account.');
-      navigate(`/reset-password/${response.token}`);
+      const challenge = await authService.requestPasswordChange({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      passwordForm.resetFields();
+      setPasswordOpen(false);
+      navigate('/verify-otp', { state: { flow: 'password-change', challenge } });
     } catch (error) {
       messageApi.error(
-        getApiErrorMessage(error, 'We could not start the password reset flow. Please try again.')
+        getApiErrorMessage(error, 'We could not start the password change. Please try again.')
       );
     } finally {
       setPasswordSubmitting(false);
@@ -211,7 +227,7 @@ const StaffProfile: React.FC = () => {
         icon={<SafetyOutlined />}
         style={{ marginBottom: 16 }}
         message="Protected profile"
-        description="Any change to your name, email, mobile number, or alerts must be confirmed with a one-time code sent to your registered mobile number."
+        description="Any change to your name, email, mobile number, or alerts must be confirmed with the current code from your authenticator app."
       />
 
       <Card
@@ -290,14 +306,10 @@ const StaffProfile: React.FC = () => {
       <Card size="small" title="Security">
         <Flex vertical gap={8}>
           <Text style={{ fontSize: 13, color: token.colorTextSecondary }}>
-            Password changes use the secure reset flow and need your authenticator code.
+            A password change needs your current password and the code from your authenticator app.
+            You then sign in again with the new password.
           </Text>
-          <Button
-            icon={<KeyOutlined />}
-            loading={passwordSubmitting}
-            onClick={handlePasswordChange}
-            block
-          >
+          <Button icon={<KeyOutlined />} onClick={() => setPasswordOpen(true)} block>
             Change password
           </Button>
         </Flex>
@@ -319,7 +331,8 @@ const StaffProfile: React.FC = () => {
             color: token.colorTextSecondary,
           }}
         >
-          After you continue, we will send a one-time code to confirm this change.
+          After you continue, enter the current code from your authenticator app to confirm this
+          change.
         </Text>
         <Form<PersonalDetailsFormValues>
           form={form}
@@ -352,6 +365,74 @@ const StaffProfile: React.FC = () => {
             rules={[{ required: true, message: 'Please enter your mobile number' }]}
           >
             <Input size="large" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={passwordOpen}
+        title="Change password"
+        okText="Save"
+        confirmLoading={passwordSubmitting}
+        onOk={() => passwordForm.submit()}
+        onCancel={() => {
+          setPasswordOpen(false);
+          passwordForm.resetFields();
+        }}
+      >
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 16,
+            fontSize: 13,
+            color: token.colorTextSecondary,
+          }}
+        >
+          After you save, enter the current code from your authenticator app. You then sign in again
+          with the new password.
+        </Text>
+        <Form<PasswordFormValues>
+          form={passwordForm}
+          layout="vertical"
+          colon={false}
+          requiredMark={false}
+          disabled={passwordSubmitting}
+          onFinish={handlePasswordChange}
+        >
+          <Form.Item
+            label="Current password"
+            name="currentPassword"
+            rules={[{ required: true, message: 'Enter your current password' }]}
+          >
+            <Input.Password size="large" autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            label="New password"
+            name="newPassword"
+            style={{ marginBottom: 8 }}
+            rules={[
+              { required: true, message: 'Create a new password' },
+              { pattern: PASSWORD_PATTERN, message: PASSWORD_COMPLEXITY_MESSAGE },
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
+          </Form.Item>
+          <PasswordStrengthMeter password={newPassword} />
+          <Form.Item
+            label="Confirm new password"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: 'Confirm your new password' },
+              ({ getFieldValue }) => ({
+                validator: (_, value) =>
+                  !value || getFieldValue('newPassword') === value
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('Passwords do not match')),
+              }),
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
           </Form.Item>
         </Form>
       </Modal>

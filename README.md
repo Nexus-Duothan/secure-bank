@@ -192,10 +192,15 @@ npx lint-staged
 
 `lint-staged` is configured at the monorepo root, so run it from `secure-bank`, not from `frontend/web-service`.
 
-Demo login:
+### Signing in
 
-- Customer: `kaveesha.demo` / `SecureBank@123`
-- Merchant: `sahan.merchant` / `SecureBank@123`
-- Bank officer: `anjali.officer` / `SecureBankAdmin@123`
-- Admin: `nimali.admin` / `SecureBankAdmin@123`
-- OTP: any 6 digits, for example `123456`
+There are no seeded logins and no seeded data. Register through the app, which creates the
+credential in `auth-service` and the profile in `user-service`; sign-in then needs the current
+six-digit code from the authenticator app you paired during registration.
+
+A newly registered customer starts with an empty portfolio: no accounts, no cards, no transactions.
+Open an account from the Accounts page to get one. Balances and activity only ever come from the
+ledger in `accounts-service`, so they change when a transfer or payment actually posts.
+
+Staff roles (`BANK_OFFICER`, `ADMIN`, `MERCHANT`) are set on the user record, so promote a
+registered account in the database or through the admin API rather than looking for a stock login.

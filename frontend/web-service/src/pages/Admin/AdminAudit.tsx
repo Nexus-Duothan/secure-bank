@@ -4,7 +4,6 @@ import { LockOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { ADMIN_NAV } from '../../components/staffNavs';
 import auditService, { type AuditTransaction } from '../../api/auditService';
-import { DEMO_AUDIT_JOURNAL } from '../../mocks/demoStaff';
 
 const { Text, Title } = Typography;
 
@@ -15,10 +14,9 @@ const formatAmount = (value: number, currency: string) =>
     minimumFractionDigits: 2,
   }).format(value);
 
-/** Read-only view of the immutable journal (FR-30). Nothing here can be edited. */
 const AdminAudit: React.FC = () => {
   const { token } = theme.useToken();
-  const [entries, setEntries] = useState<AuditTransaction[]>(DEMO_AUDIT_JOURNAL);
+  const [entries, setEntries] = useState<AuditTransaction[]>([]);
   const [filter, setFilter] = useState<'ALL' | 'FLAGGED'>('ALL');
 
   useEffect(() => {
@@ -26,10 +24,10 @@ const AdminAudit: React.FC = () => {
     auditService
       .getTransactions()
       .then((data) => {
-        if (!cancelled) setEntries(data);
+        if (!cancelled) setEntries(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setEntries([]);
       });
     return () => {
       cancelled = true;
@@ -47,7 +45,7 @@ const AdminAudit: React.FC = () => {
         <Flex align="center" gap={8}>
           <LockOutlined style={{ color: token.colorPrimary }} />
           <Text style={{ fontSize: 13, color: token.colorTextSecondary }}>
-            Append-only journal. Entries can never be changed or deleted (FR-30).
+            Append-only journal. Entries cannot be changed or deleted.
           </Text>
         </Flex>
       </Card>

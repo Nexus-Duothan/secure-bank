@@ -3,11 +3,6 @@ import type { OtpChallenge, Role, UserProfile, UserStatus } from '../types';
 
 const client = createApiClient('/api/v1/users/admin');
 
-/**
- * Bank-side user administration (FR-08). Role and status changes are high-risk
- * actions (FR-04): the backend stages them behind a one-time code sent to the
- * staff member, and they only land after `confirmChange`.
- */
 export const adminService = {
   client,
   getUsers: () => client.get<UserProfile[]>('').then((response) => response.data),

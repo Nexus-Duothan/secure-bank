@@ -9,14 +9,13 @@ import {
   Divider,
   Form,
   Input,
-  Radio,
   Select,
   Space,
   Typography,
   theme,
 } from 'antd';
 import type { AxiosError } from 'axios';
-import { authService, type AccountType } from '../../api/authService';
+import { authService } from '../../api/authService';
 import AuthLayout from '../../components/AuthLayout';
 import TrustIndicator from '../../components/TrustIndicator';
 import { PasswordStrengthMeter } from '../../components/PasswordStrength';
@@ -40,7 +39,6 @@ interface CreateAccountFormValues {
   phoneNumber: string;
   address: string;
   nationalId: string;
-  accountType: AccountType;
   username: string;
   password: string;
   confirmPassword: string;
@@ -82,17 +80,16 @@ const CreateAccount: React.FC = () => {
         phoneNumber: `${values.countryCode}${values.phoneNumber}`,
         address: values.address,
         nationalIdOrPassport: values.nationalId,
-        accountType: values.accountType,
         username: values.username,
         password: values.password,
       });
       navigate('/verify-otp', {
         state: {
-          // Registration has no dedicated pre-auth endpoint yet, so the new account's
-          // userId is forwarded as the session reference the shared OTP screen submits
-          // alongside the code, the same way login's preAuthToken is used.
           preAuthToken: response.userId,
+          username: response.username,
           usernameOrEmail: values.email,
+          email: values.email,
+          registration: true,
         },
       });
     } catch (err) {
@@ -121,7 +118,7 @@ const CreateAccount: React.FC = () => {
           requiredMark={false}
           disabled={submitting}
           onFinish={handleFinish}
-          initialValues={{ countryCode: '+94', accountType: 'SAVINGS' }}
+          initialValues={{ countryCode: '+94' }}
         >
           <SectionHeading title="Personal & Contact Information" />
 
@@ -210,29 +207,6 @@ const CreateAccount: React.FC = () => {
             ]}
           >
             <Input placeholder="e.g. 200012345678" size="large" />
-          </Form.Item>
-
-          <Divider style={{ margin: '8px 0 24px' }} />
-          <SectionHeading title="Account Preferences" />
-
-          <Form.Item
-            label={<span style={{ fontWeight: 600 }}>Account Type</span>}
-            name="accountType"
-            rules={[{ required: true, message: 'Please select an account type' }]}
-          >
-            <Radio.Group
-              optionType="button"
-              buttonStyle="solid"
-              size="large"
-              style={{ display: 'flex' }}
-            >
-              <Radio.Button value="SAVINGS" style={{ flex: 1, textAlign: 'center' }}>
-                Savings
-              </Radio.Button>
-              <Radio.Button value="CURRENT" style={{ flex: 1, textAlign: 'center' }}>
-                Current/Checking
-              </Radio.Button>
-            </Radio.Group>
           </Form.Item>
 
           <Divider style={{ margin: '8px 0 24px' }} />

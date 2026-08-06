@@ -30,17 +30,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     FilterChain filterChain
   ) throws ServletException, IOException {
     try {
-      String jwt = getJwtFromRequest(request);
+      String userIdHeader = request.getHeader("X-User-Id");
+      String roleHeader = request.getHeader("X-User-Role");
 
-      if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-        String tokenType = tokenProvider.getTokenTypeFromToken(jwt);
-
-        if ("ACCESS".equals(tokenType)) {
-          UUID userId = tokenProvider.getUserIdFromToken(jwt);
-          Role role = tokenProvider.getRoleFromToken(jwt);
-
-          SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role.name());
-
+      if (StringUtils.hasText(userIdHeader)) {
+        try {
+          UUID userId = UUID.fromString(userIdHeader);
+          String roleName = StringUtils.hasText(roleHeader) ? roleHeader : "CUSTOMER";
+          SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + roleName);
           UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
               userId,
@@ -48,8 +45,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
               Collections.singletonList(authority)
             );
           authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
           SecurityContextHolder.getContext().setAuthentication(authentication);
+        } catch (IllegalArgumentException ignored) {}
+      } else {
+        String jwt = getJwtFromRequest(request);
+        if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+          String tokenType = tokenProvider.getTokenTypeFromToken(jwt);
+          if ("ACCESS".equals(tokenType)) {
+            UUID userId = tokenProvider.getUserIdFromToken(jwt);
+            Role role = tokenProvider.getRoleFromToken(jwt);
+            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role.name());
+            UsernamePasswordAuthenticationToken authentication =
+              new UsernamePasswordAuthenticationToken(
+                userId,
+                null,
+                Collections.singletonList(authority)
+              );
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+          }
         }
       }
     } catch (Exception ex) {

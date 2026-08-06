@@ -17,14 +17,23 @@ export interface KycApplication {
   reviewedBy: string | null;
 }
 
-/**
- * Officer-side view of the KYC queue (FR-02). Approve/reject decisions happen
- * in the bank's core system, so this app only reads the queue.
- */
 export const kycService = {
   client,
   getPendingApplications: () =>
     client.get<KycApplication[]>('/kyc/pending').then((response) => response.data),
+  reviewApplication: (
+    applicationId: string,
+    action: 'APPROVED' | 'REJECTED',
+    rejectionReason: string,
+    totpCode: string
+  ) =>
+    client
+      .post<KycApplication>(`/kyc/${applicationId}/review`, {
+        action,
+        rejectionReason,
+        totpCode,
+      })
+      .then((response) => response.data),
 };
 
 export default kycService;

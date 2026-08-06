@@ -30,10 +30,22 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
   private final AntPathMatcher pathMatcher = new AntPathMatcher();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
-  private final SecretKey key;
+  private static final List<String> PUBLIC_PATTERNS = List.of(
+    "/api/v1/auth/register",
+    "/api/v1/auth/register/verify-phone",
+    "/api/v1/auth/login",
+    "/api/v1/auth/login/verify-mfa",
+    "/api/v1/auth/resend-otp",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/password-reset/**",
+    "/api/v1/auth/validate",
+    "/api/v1/totp/setup/**",
+    "/api/v1/totp/enable",
+    "/actuator/health",
+    "/actuator/info"
+  );
 
-  @Value("${gateway.public-paths:/api/v1/auth/login,/api/v1/auth/register,/actuator/health}")
-  private List<String> publicPaths;
+  private final SecretKey key;
 
   public JwtHeaderRelayFilter(@Value("${jwt.secret}") String secret) {
     this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
@@ -52,47 +64,48 @@ public class JwtHeaderRelayFilter implements GlobalFilter, Ordered {
         headers.remove(USER_ROLE_HEADER);
       });
 
-    // Check if path is public
-    if (isPublicPath(path)) {
-      return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
-    }
-
+    boolean isPublic = isPublicPath(path);
     String header = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-    if (header == null || !header.startsWith("Bearer ")) {
+
+    if (header != null && header.startsWith("Bearer ")) {
+      String token = header.substring(7).trim();
+      if (!token.isEmpty()) {
+        try {
+          Claims claims = Jwts.parser()
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
+
+          String tokenType = claims.get("type", String.class);
+          if ("ACCESS".equals(tokenType)) {
+            String userId = claims.getSubject();
+            String role = claims.get("role", String.class);
+            if (userId != null && !userId.isEmpty()) {
+              requestBuilder.header(USER_ID_HEADER, userId);
+              if (role != null) {
+                requestBuilder.header(USER_ROLE_HEADER, role);
+              }
+            }
+          } else if (!isPublic) {
+            return unauthorized(exchange, "Only access tokens can call downstream services");
+          }
+        } catch (JwtException | IllegalArgumentException exception) {
+          if (!isPublic) {
+            return unauthorized(exchange, "Invalid or expired access token");
+          }
+        }
+      }
+    } else if (!isPublic) {
       return unauthorized(exchange, "Missing Authorization header");
     }
 
-    String token = header.substring(7).trim();
-    if (token.isEmpty()) {
-      return unauthorized(exchange, "Missing Bearer token");
-    }
-
-    try {
-      Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-      String tokenType = claims.get("type", String.class);
-      if (!"ACCESS".equals(tokenType)) {
-        return unauthorized(exchange, "Only access tokens can call downstream services");
-      }
-
-      String userId = claims.getSubject();
-      String role = claims.get("role", String.class);
-      requestBuilder.headers(headers -> {
-        if (userId != null) {
-          headers.set(USER_ID_HEADER, userId);
-        }
-        if (role != null && !role.isBlank()) {
-          headers.set(USER_ROLE_HEADER, role);
-        }
-      });
-      return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
-    } catch (JwtException | IllegalArgumentException exception) {
-      return unauthorized(exchange, "Invalid or expired access token");
-    }
+    return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
   }
 
   private boolean isPublicPath(String path) {
-    if (publicPaths == null) return false;
-    return publicPaths.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
+    if (path == null) return false;
+    return PUBLIC_PATTERNS.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
   }
 
   @Override

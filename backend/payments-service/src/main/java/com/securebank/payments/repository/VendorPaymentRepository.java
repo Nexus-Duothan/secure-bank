@@ -21,5 +21,7 @@ public interface VendorPaymentRepository extends JpaRepository<VendorPayment, UU
 
   List<VendorPayment> findByStatus(PaymentStatus status);
 
+  List<VendorPayment> findByMerchantMerchantUserIdOrderByCreatedAtDesc(UUID merchantUserId);
+
   boolean existsByReferenceNumber(String referenceNumber);
 }

@@ -14,7 +14,7 @@ The **Lending Service** handles loan origination, application review, repayment 
 
 ## Accounts-service limitation
 
-`accounts-service` is still a bare scaffold: `GET /api/v1/accounts/{id}` returns the same static hardcoded balance for every account, and there is no debit/mutate endpoint of any kind. `AccountsClient` (`client/AccountsClient.java`) is built against that read-only contract — balance checks here are advisory, not authoritative, and no collection in this service actually moves money in a ledger yet. This mirrors transfer-service's stance on the same dependency. Once accounts-service grows a real debit contract, only `AccountsRestClient` needs to change.
+`accounts-service` owns the ledger and `AccountsClient` (`client/AccountsClient.java`) reads real balances from it (`GET /internal/v1/accounts/{id}`). Lending still only **reads**: disbursements and installment collections are recorded on the loan, not posted to the customer's account, so a balance check here is advisory rather than a reservation. Posting them is a matter of calling the debit/credit routes accounts-service now exposes; only `AccountsRestClient` needs to change.
 
 ## Testing
 

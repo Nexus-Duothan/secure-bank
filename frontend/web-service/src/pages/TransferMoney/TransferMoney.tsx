@@ -1,15 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Flex, Form, Input, InputNumber, Typography, theme } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Typography,
+  theme,
+} from 'antd';
+import { SafetyCertificateOutlined } from '@ant-design/icons';
 import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import transferService, { type TransferResponse } from '../../api/transferService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
-
+import BottomNav from '../../components/BottomNav';
+import { currencyOf, formatMoney } from '../../utils/currency';
 const { Text, Title } = Typography;
-
-const MOCK_FROM_ACCOUNT: Account = DEMO_PRIMARY_ACCOUNT;
 
 type Step = 'form' | 'review';
 
@@ -23,19 +33,20 @@ const fieldLabel = (text: string, color: string) => (
   <span style={{ fontWeight: 600, fontSize: 13, color }}>{text}</span>
 );
 
-const formatCurrency = (currency: string, value: number) =>
-  `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
-
 const TransferMoney: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [form] = Form.useForm<TransferFormValues>();
-  const [fromAccount, setFromAccount] = useState<Account>(MOCK_FROM_ACCOUNT);
+  const [fromAccount, setFromAccount] = useState<Account | null>(null);
   const [step, setStep] = useState<Step>('form');
   const [quote, setQuote] = useState<TransferResponse | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [totpOpen, setTotpOpen] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Fixed by the account being debited; the customer only types the amount.
+  const accountCurrency = currencyOf(fromAccount);
   // Stable per-attempt key so a network retry of the same quote request dedupes on the backend
   // instead of creating a duplicate PENDING_CONFIRMATION row; reset whenever the user edits the form.
   const idempotencyKeyRef = useRef<string | null>(null);
@@ -67,6 +78,11 @@ const TransferMoney: React.FC = () => {
     if (!idempotencyKeyRef.current) {
       idempotencyKeyRef.current = crypto.randomUUID();
     }
+    if (!fromAccount) {
+      setError('An active account is required to make a transfer.');
+      setQuoting(false);
+      return;
+    }
     try {
       const response = await transferService.quoteTransfer(
         {
@@ -88,12 +104,18 @@ const TransferMoney: React.FC = () => {
     }
   };
 
+  const requestConfirmation = () => {
+    setError(null);
+    setTotpCode('');
+    setTotpOpen(true);
+  };
+
   const handleConfirm = async () => {
-    if (!quote) return;
+    if (!quote || totpCode.length !== 6) return;
     setConfirming(true);
     setError(null);
     try {
-      const response = await transferService.confirmTransfer(quote.id);
+      const response = await transferService.confirmTransfer(quote.id, totpCode);
       if (response.status !== 'COMPLETED') {
         setError(
           response.failureReason ?? 'This transfer could not be completed. Please try again.'
@@ -101,6 +123,7 @@ const TransferMoney: React.FC = () => {
         setQuote(response);
         return;
       }
+      setTotpOpen(false);
       navigate('/dashboard');
     } catch (err) {
       setError(
@@ -120,7 +143,7 @@ const TransferMoney: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 48px' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
         <Title
           level={2}
           className="font-display"
@@ -162,8 +185,8 @@ const TransferMoney: React.FC = () => {
                       color: token.colorTextTertiary,
                     }}
                   >
-                    {fromAccount.nickname} -{' '}
-                    {formatCurrency(fromAccount.currency, fromAccount.balance)}
+                    {fromAccount?.nickname || 'Account'} -{' '}
+                    {formatMoney(fromAccount?.balance || 0, accountCurrency)}
                   </div>
                 </Form.Item>
 
@@ -188,16 +211,9 @@ const TransferMoney: React.FC = () => {
                     style={{ width: '100%' }}
                     controls={false}
                     min={0}
-                    placeholder={`${fromAccount.currency} 0.00`}
-                    formatter={(value) =>
-                      value === undefined || value === null
-                        ? ''
-                        : `${fromAccount.currency} ${value}`
-                    }
-                    parser={(value) => {
-                      const numeric = Number((value ?? '').replace(/[^0-9.]/g, ''));
-                      return Number.isNaN(numeric) ? 0 : numeric;
-                    }}
+                    addonBefore={accountCurrency}
+                    placeholder="0.00"
+                    precision={2}
                   />
                 </Form.Item>
 
@@ -230,21 +246,25 @@ const TransferMoney: React.FC = () => {
                 styles={{ body: { padding: 24 } }}
               >
                 <Flex vertical gap={16}>
-                  <SummaryRow label="From" value={fromAccount.nickname} token={token} />
+                  <SummaryRow
+                    label="From"
+                    value={fromAccount?.nickname || 'Account'}
+                    token={token}
+                  />
                   <SummaryRow label="To" value={quote.toAccount} token={token} />
                   <SummaryRow
                     label="Amount"
-                    value={formatCurrency(quote.currency, quote.amount)}
+                    value={formatMoney(quote.amount, quote.currency)}
                     token={token}
                   />
                   <SummaryRow
                     label="Fee"
-                    value={formatCurrency(quote.currency, quote.fee)}
+                    value={formatMoney(quote.fee, quote.currency)}
                     token={token}
                   />
                   <SummaryRow
                     label="Total debit"
-                    value={formatCurrency(quote.currency, quote.totalDebit)}
+                    value={formatMoney(quote.totalDebit, quote.currency)}
                     token={token}
                     emphasize
                   />
@@ -268,7 +288,7 @@ const TransferMoney: React.FC = () => {
                   block
                   loading={confirming}
                   style={{ fontWeight: 600, height: 52 }}
-                  onClick={handleConfirm}
+                  onClick={requestConfirmation}
                 >
                   Confirm transfer
                 </Button>
@@ -276,7 +296,40 @@ const TransferMoney: React.FC = () => {
             </>
           )
         )}
+
+        <Modal
+          open={totpOpen}
+          title="Verify this transfer"
+          footer={null}
+          onCancel={() => !confirming && setTotpOpen(false)}
+          destroyOnClose
+        >
+          <Alert
+            type="warning"
+            showIcon
+            icon={<SafetyCertificateOutlined />}
+            message="Authenticator code required"
+            description="No money will move until the current six-digit code is verified."
+            style={{ marginBottom: 20 }}
+          />
+          {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
+          <Flex vertical gap={16} align="center">
+            <Input.OTP length={6} value={totpCode} onChange={setTotpCode} size="large" />
+            <Button
+              type="primary"
+              size="large"
+              block
+              loading={confirming}
+              disabled={totpCode.length !== 6}
+              onClick={() => void handleConfirm()}
+            >
+              Verify and transfer
+            </Button>
+          </Flex>
+        </Modal>
       </div>
+
+      <BottomNav />
     </div>
   );
 };

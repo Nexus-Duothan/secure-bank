@@ -10,14 +10,18 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:securebank_secret_pass}
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:none}
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_accounts
+    baseline-on-migrate: true
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
-securebank:
-  notification:
-    service-url: ${SECUREBANK_NOTIFICATION_SERVICE_URL:http://localhost:8088}
-  accounts:
-    otp:
-      expose-code: ${SECUREBANK_ACCOUNTS_OTP_EXPOSE_CODE:false}
+totp-service:
+  url: ${TOTP_SERVICE_URL:http://localhost:8082}
+
+user-service:
+  url: ${USER_SERVICE_URL:http://localhost:8083}

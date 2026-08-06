@@ -14,9 +14,11 @@ import {
 } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
 import accountsService, { type Account } from '../../api/accountsService';
+import accountSelection from '../../api/accountSelection';
 import lendingService from '../../api/lendingService';
 import { getApiErrorMessage } from '../../api/apiError';
-import { DEMO_PRIMARY_ACCOUNT } from '../../mocks/demoCustomer';
+import BottomNav from '../../components/BottomNav';
+import { currencyOf, formatMoney } from '../../utils/currency';
 
 const { Text, Title } = Typography;
 
@@ -56,16 +58,25 @@ const LoanApplication: React.FC = () => {
   const [form] = Form.useForm<LoanAmountFormValues>();
   const [currentStep, setCurrentStep] = useState(0);
   const [applicationId, setApplicationId] = useState<string | null>(null);
-  const [linkedAccount, setLinkedAccount] = useState<Account>(DEMO_PRIMARY_ACCOUNT);
+  const [linkedAccount, setLinkedAccount] = useState<Account | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fixed by the account the loan is disbursed to; the customer only types the amount.
+  const accountCurrency = currencyOf(linkedAccount);
 
   useEffect(() => {
     let cancelled = false;
     accountsService
-      .getPrimaryAccount()
+      .getAccounts()
       .then((data) => {
-        if (!cancelled) setLinkedAccount(data);
+        if (!cancelled && data.length > 0) {
+          // The loan is always tied to the account the customer picked on the accounts page.
+          const selected =
+            data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
+            data[0];
+          accountSelection.setSelectedAccountId(selected.id);
+          setLinkedAccount(selected);
+        }
       })
       .catch(() => {
         // Endpoint not available yet - fall back to the placeholder shown above.
@@ -78,6 +89,11 @@ const LoanApplication: React.FC = () => {
   const handleFinishAmountStep = async (values: LoanAmountFormValues) => {
     setSubmitting(true);
     setError(null);
+    if (!linkedAccount) {
+      setError('An active bank account is required to apply for a loan.');
+      setSubmitting(false);
+      return;
+    }
     try {
       const response = await lendingService.applyForLoan({
         ...values,
@@ -99,7 +115,7 @@ const LoanApplication: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 48px' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 112px' }}>
         <Title
           level={2}
           className="font-display"
@@ -152,6 +168,23 @@ const LoanApplication: React.FC = () => {
                 }}
                 onFinish={handleFinishAmountStep}
               >
+                <Form.Item label={fieldLabel('Disburse to', token.colorText)}>
+                  <div
+                    style={{
+                      height: 44,
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 12px',
+                      borderRadius: 8,
+                      border: `1px solid ${token.colorBorder}`,
+                      color: token.colorTextTertiary,
+                    }}
+                  >
+                    {linkedAccount?.nickname || 'Account'} -{' '}
+                    {formatMoney(linkedAccount?.balance || 0, accountCurrency)}
+                  </div>
+                </Form.Item>
+
                 <Form.Item
                   label={fieldLabel('Loan purpose', token.colorText)}
                   name="purpose"
@@ -173,14 +206,9 @@ const LoanApplication: React.FC = () => {
                     style={{ width: '100%' }}
                     controls={false}
                     min={0}
-                    placeholder="LKR 0.00"
-                    formatter={(value) =>
-                      value === undefined || value === null ? '' : `LKR ${value}`
-                    }
-                    parser={(value) => {
-                      const numeric = Number((value ?? '').replace(/[^0-9.]/g, ''));
-                      return Number.isNaN(numeric) ? 0 : numeric;
-                    }}
+                    addonBefore={accountCurrency}
+                    placeholder="0.00"
+                    precision={2}
                   />
                 </Form.Item>
 
@@ -269,6 +297,8 @@ const LoanApplication: React.FC = () => {
           </Card>
         )}
       </div>
+
+      <BottomNav />
     </div>
   );
 };

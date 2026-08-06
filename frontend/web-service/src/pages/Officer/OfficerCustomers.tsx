@@ -1,10 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Avatar, Flex, Input, Modal, Tag, Typography, theme } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Flex,
+  Input,
+  Modal,
+  Select,
+  Tag,
+  Typography,
+  message,
+  theme,
+} from 'antd';
+import { SafetyOutlined, SearchOutlined } from '@ant-design/icons';
 import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import adminService from '../../api/adminService';
-import { DEMO_ADMIN_USERS } from '../../mocks/demoStaff';
+import { getApiErrorMessage } from '../../api/apiError';
 import type { UserProfile, UserStatus } from '../../types';
 
 const { Text } = Typography;
@@ -25,25 +38,25 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-/**
- * View-only customer lookup for officers. Account actions (holds, suspensions)
- * are handled in the bank's core system; this app only shows the state.
- */
 const OfficerCustomers: React.FC = () => {
   const { token } = theme.useToken();
-  const [users, setUsers] = useState<UserProfile[]>(DEMO_ADMIN_USERS);
+  const navigate = useNavigate();
+  const [messageApi, messageContext] = message.useMessage();
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<UserProfile | null>(null);
+  const [nextStatus, setNextStatus] = useState<UserStatus>('ACTIVE');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     adminService
       .getUsers()
       .then((data) => {
-        if (!cancelled) setUsers(data);
+        if (!cancelled) setUsers(data || []);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setUsers([]);
       });
     return () => {
       cancelled = true;
@@ -62,8 +75,34 @@ const OfficerCustomers: React.FC = () => {
       );
   }, [users, search]);
 
+  const openCustomer = (user: UserProfile) => {
+    setSelected(user);
+    setNextStatus(user.status);
+  };
+
+  const requestStatusChange = async () => {
+    if (!selected || nextStatus === selected.status) return;
+    setSaving(true);
+    try {
+      const challenge = await adminService.requestStatusChange(selected.id, nextStatus);
+      navigate('/verify-otp', {
+        state: {
+          flow: 'admin-change',
+          challenge,
+          successMessage: `Account status updated for ${selected.fullName}.`,
+          returnTo: '/officer/customers',
+        },
+      });
+    } catch (error) {
+      messageApi.error(getApiErrorMessage(error, 'Could not start the account status change.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <StaffLayout portalName="Customer lookup" roleLabel="BANK OFFICER" navItems={OFFICER_NAV}>
+      {messageContext}
       <Input
         prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
         placeholder="Search customers by name or email"
@@ -99,7 +138,7 @@ const OfficerCustomers: React.FC = () => {
             key={user.id}
             align="center"
             gap={12}
-            onClick={() => setSelected(user)}
+            onClick={() => openCustomer(user)}
             style={{
               padding: '14px 16px',
               cursor: 'pointer',
@@ -152,6 +191,36 @@ const OfficerCustomers: React.FC = () => {
                 <Tag color={statusColor[selected.status]}>{selected.status.replace('_', ' ')}</Tag>
               </div>
             </div>
+            <Alert
+              type="warning"
+              showIcon
+              icon={<SafetyOutlined />}
+              message="Protected account action"
+              description="Freezing, suspending, or reactivating an account requires your authenticator code."
+            />
+            <Flex gap={8}>
+              <Select
+                value={nextStatus}
+                onChange={setNextStatus}
+                style={{ flex: 1 }}
+                size="large"
+                options={[
+                  { value: 'ACTIVE', label: 'Active' },
+                  { value: 'FROZEN', label: 'Frozen' },
+                  { value: 'SUSPENDED', label: 'Suspended' },
+                  { value: 'PENDING_REVIEW', label: 'Pending review' },
+                ]}
+              />
+              <Button
+                type="primary"
+                size="large"
+                loading={saving}
+                disabled={nextStatus === selected.status}
+                onClick={() => void requestStatusChange()}
+              >
+                Change status
+              </Button>
+            </Flex>
           </Flex>
         )}
       </Modal>

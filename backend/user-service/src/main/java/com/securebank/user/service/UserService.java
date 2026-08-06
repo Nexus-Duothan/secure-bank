@@ -2,6 +2,7 @@ package com.securebank.user.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securebank.user.client.TotpClient;
 import com.securebank.user.config.UserServiceProperties;
 import com.securebank.user.dto.AdminRoleChangePayload;
 import com.securebank.user.dto.AdminStatusChangePayload;
@@ -12,6 +13,7 @@ import com.securebank.user.dto.NotificationPreferencesResponse;
 import com.securebank.user.dto.NotificationPreferencesUpdateRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.ProfileUpdateRequest;
+import com.securebank.user.dto.ProvisionProfileRequest;
 import com.securebank.user.dto.RoleUpdateRequest;
 import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserDeviceResponse;
@@ -29,13 +31,11 @@ import com.securebank.user.security.AccessDeniedException;
 import com.securebank.user.security.CallerIdentity;
 import com.securebank.user.service.notification.UserSecurityAlertService;
 import jakarta.persistence.EntityNotFoundException;
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,31 +43,26 @@ import org.springframework.transaction.annotation.Transactional;
  * Profile management (FR-07) and role administration (FR-08).
  *
  * <p>Every self-service mutation is staged as a {@link PendingUserChange} and only applied once the
- * customer confirms it with a one-time code, so a hijacked session alone cannot alter contact
- * details or linked devices.
+ * customer confirms it with the current code from their authenticator app (TOTP), so a hijacked
+ * session alone cannot alter contact details or linked devices.
  */
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
-  private static final SecureRandom OTP_RANDOM = new SecureRandom();
-  private static final int OTP_BOUND = 1_000_000;
   private static final int MAX_TRUSTED_DEVICES = 3;
-
-  private record OtpDelivery(
-    String channel,
-    String destination,
-    String targetLabel,
-    String message
-  ) {}
+  /** Shown instead of a masked phone number now that codes come from the authenticator app. */
+  private static final String TOTP_DELIVERY_TARGET = "Authenticator app";
+  private static final String TOTP_CHALLENGE_MESSAGE =
+    "Enter the current six digit code from your authenticator app to confirm this change.";
 
   private final UserProfileRepository userProfileRepository;
   private final UserDeviceRepository userDeviceRepository;
   private final PendingUserChangeRepository pendingUserChangeRepository;
   private final ObjectMapper objectMapper;
-  private final PasswordEncoder otpEncoder;
   private final UserServiceProperties properties;
   private final UserSecurityAlertService userSecurityAlertService;
+  private final TotpClient totpClient;
 
   // --------------------------------------------------------------------
   // Self-service profile (FR-07)
@@ -76,6 +71,31 @@ public class UserService {
   @Transactional(readOnly = true)
   public UserProfileResponse getProfile(CallerIdentity caller) {
     return toProfileResponse(findUser(caller.userId()));
+  }
+
+  /**
+   * Creates the profile for a customer auth-service has just registered, so their very first
+   * sign-in reads a real row rather than nothing. Idempotent: if the profile already exists it is
+   * returned untouched, because the customer's own edits must outrank a replayed provisioning call.
+   */
+  @Transactional
+  public UserProfileResponse provisionProfile(ProvisionProfileRequest request) {
+    return toProfileResponse(
+      userProfileRepository.findById(request.id()).orElseGet(() ->
+        userProfileRepository.save(
+          UserProfile.builder()
+            .id(request.id())
+            .fullName(request.fullName())
+            .email(request.email())
+            .phoneNumber(request.phoneNumber())
+            .role(request.role())
+            .status(request.status())
+            // KYC has not been reviewed yet at registration time.
+            .idVerified(request.status() == UserStatus.ACTIVE)
+            .build()
+        )
+      )
+    );
   }
 
   @Transactional
@@ -149,7 +169,7 @@ public class UserService {
       throw new EntityNotFoundException("Change request not found");
     }
 
-    verifyOtp(change, request.otpCode());
+    verifyTotp(change, request.otpCode());
 
     UserProfile profile = findUser(change.getUserProfileId());
     applyChange(profile, change);
@@ -268,7 +288,7 @@ public class UserService {
       throw new EntityNotFoundException("Change request not found");
     }
 
-    verifyOtp(change, request.otpCode());
+    verifyTotp(change, request.otpCode());
 
     UserProfileResponse target;
     try {
@@ -315,39 +335,39 @@ public class UserService {
   }
 
   // --------------------------------------------------------------------
-  // OTP challenge handling
+  // TOTP challenge handling
   // --------------------------------------------------------------------
 
+  /**
+   * Stages the change. Nothing is sent anywhere: the code is produced by the authenticator app the
+   * customer already enrolled, so there is no secret for this service to generate or store.
+   */
   private OtpChallengeResponse createChallenge(
     UserProfile profile,
     ChangeRequestType type,
     Object payload
   ) {
-    String code = generateOtpCode();
     Instant expiresAt = Instant.now().plus(properties.otp().ttl());
     PendingUserChange saved = pendingUserChangeRepository.save(
       PendingUserChange.builder()
         .userProfileId(profile.getId())
         .type(type)
         .payloadJson(writePayload(payload))
-        .otpHash(otpEncoder.encode(code))
         .expiresAt(expiresAt)
         .build()
     );
-    OtpDelivery delivery = resolveOtpDelivery(profile);
-    userSecurityAlertService.sendOtpChallenge(profile, type, code, expiresAt);
 
     return new OtpChallengeResponse(
       saved.getId(),
       type,
-      delivery.targetLabel(),
+      TOTP_DELIVERY_TARGET,
       saved.getExpiresAt(),
-      delivery.message(),
-      properties.otp().exposeCode() ? code : null
+      TOTP_CHALLENGE_MESSAGE,
+      null
     );
   }
 
-  private void verifyOtp(PendingUserChange change, String submittedCode) {
+  private void verifyTotp(PendingUserChange change, String submittedCode) {
     if (change.isConfirmed()) {
       throw new ConflictException("Change request already confirmed");
     }
@@ -358,34 +378,16 @@ public class UserService {
       );
     }
     if (change.isExpired(Instant.now())) {
-      throw new OtpVerificationException("OTP challenge expired");
+      throw new OtpVerificationException("Verification request expired");
     }
-    if (!otpEncoder.matches(submittedCode, change.getOtpHash())) {
+    if (!totpClient.verify(change.getUserProfileId(), submittedCode)) {
       change.setFailedAttempts(change.getFailedAttempts() + 1);
       pendingUserChangeRepository.save(change);
       int remaining = Math.max(0, maxAttempts - change.getFailedAttempts());
       throw new OtpVerificationException(
-        "Invalid OTP code, " + remaining + " attempt(s) remaining"
+        "Invalid authenticator code, " + remaining + " attempt(s) remaining"
       );
     }
-  }
-
-  private String generateOtpCode() {
-    return "%06d".formatted(OTP_RANDOM.nextInt(OTP_BOUND));
-  }
-
-  private OtpDelivery resolveOtpDelivery(UserProfile profile) {
-    if (!hasText(profile.getPhoneNumber())) {
-      throw new ConflictException(
-        "A verified mobile number is required before SecureBank can send OTP confirmations"
-      );
-    }
-    return new OtpDelivery(
-      "SMS",
-      profile.getPhoneNumber().trim(),
-      maskPhone(profile.getPhoneNumber()),
-      "Enter the six digit code sent to your registered mobile number to confirm this change."
-    );
   }
 
   // --------------------------------------------------------------------
@@ -580,23 +582,6 @@ public class UserService {
       return email;
     }
     return email.charAt(0) + "***" + email.substring(at - 1);
-  }
-
-  private String maskPhone(String phoneNumber) {
-    if (phoneNumber == null) {
-      return null;
-    }
-    String phone = phoneNumber.trim();
-    if (phone.length() <= 4) {
-      return phone;
-    }
-    int prefixLength = phone.startsWith("+") ? Math.min(3, phone.length() - 4) : 2;
-    prefixLength = Math.max(1, prefixLength);
-    return phone.substring(0, prefixLength) + "***" + phone.substring(phone.length() - 4);
-  }
-
-  private boolean hasText(String value) {
-    return value != null && !value.isBlank();
   }
 
   private String describeConfirmedChange(UserProfile profile, ChangeRequestType type) {

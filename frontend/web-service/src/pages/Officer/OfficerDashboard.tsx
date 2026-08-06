@@ -6,28 +6,17 @@ import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import kycService from '../../api/kycService';
 import lendingService from '../../api/lendingService';
-import auditService from '../../api/auditService';
+import paymentsService from '../../api/paymentsService';
 import adminService from '../../api/adminService';
-import {
-  DEMO_ADMIN_USERS,
-  DEMO_AUDIT_JOURNAL,
-  DEMO_KYC_QUEUE,
-  DEMO_LOAN_QUEUE,
-} from '../../mocks/demoStaff';
-
 const { Text } = Typography;
 
 const OfficerDashboard: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [kycCount, setKycCount] = useState(DEMO_KYC_QUEUE.length);
-  const [loanCount, setLoanCount] = useState(DEMO_LOAN_QUEUE.length);
-  const [flaggedCount, setFlaggedCount] = useState(
-    DEMO_AUDIT_JOURNAL.filter((entry) => entry.flagged).length
-  );
-  const [customerCount, setCustomerCount] = useState(
-    DEMO_ADMIN_USERS.filter((user) => user.role === 'CUSTOMER').length
-  );
+  const [kycCount, setKycCount] = useState(0);
+  const [loanCount, setLoanCount] = useState(0);
+  const [flaggedCount, setFlaggedCount] = useState(0);
+  const [customerCount, setCustomerCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,37 +24,38 @@ const OfficerDashboard: React.FC = () => {
     kycService
       .getPendingApplications()
       .then((data) => {
-        if (!cancelled) setKycCount(data.length);
+        if (!cancelled) setKycCount((data || []).length);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setKycCount(0);
       });
 
     lendingService
       .getPendingApplications()
       .then((data) => {
-        if (!cancelled) setLoanCount(data.length);
+        if (!cancelled) setLoanCount((data || []).length);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setLoanCount(0);
       });
 
-    auditService
-      .getTransactions()
+    paymentsService
+      .getHeldPayments()
       .then((data) => {
-        if (!cancelled) setFlaggedCount(data.filter((entry) => entry.flagged).length);
+        if (!cancelled) setFlaggedCount((data || []).length);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setFlaggedCount(0);
       });
 
     adminService
       .getUsers()
       .then((data) => {
-        if (!cancelled) setCustomerCount(data.filter((user) => user.role === 'CUSTOMER').length);
+        if (!cancelled)
+          setCustomerCount((data || []).filter((user) => user.role === 'CUSTOMER').length);
       })
       .catch(() => {
-        // Endpoint not available yet — fall back to the placeholder shown above.
+        if (!cancelled) setCustomerCount(0);
       });
 
     return () => {
@@ -96,7 +86,7 @@ const OfficerDashboard: React.FC = () => {
       value: flaggedCount,
       icon: <FlagOutlined style={{ color: token.colorError }} />,
       path: '/officer/flagged',
-      hint: 'Held by fraud rules; reviewed in the bank system (FR-31).',
+      hint: 'Payments held by fraud controls and waiting for your decision.',
     },
     {
       key: 'customers',
