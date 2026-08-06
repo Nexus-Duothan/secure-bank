@@ -1,0 +1,73 @@
+name: SecureBank GCP CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - feature/k8s-gcp-deployment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
+  GCP_CLUSTER_NAME: ${{ secrets.GCP_CLUSTER_NAME || 'securebank-cluster' }}
+  GCP_REPOSITORY: ${{ secrets.GCP_REPOSITORY || 'secure-bank-repo' }}
+  WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+jobs:
+  test-and-build:
+    name: Build Containers & Deploy to GKE
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & Push Images via GCP Cloud Build
+        run: |
+          gcloud builds submit \
+            --config=cloudbuild.yaml \
+            --substitutions=_LOCATION=${{ env.GCP_REGION }},_REPOSITORY=${{ env.GCP_REPOSITORY }} \
+            .
+
+      - name: Authenticate GKE kubectl
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GCP_CLUSTER_NAME }}
+          location: ${{ env.GCP_REGION }}
+
+      - name: Deploy Manifests to GKE
+        run: |
+          IMAGE_PREFIX="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_REPOSITORY }}"
+
+          # Replace placeholder image names with Artifact Registry tag
+          sed -i "s|image: securebank/|image: ${IMAGE_PREFIX}/|g" k8s/*.yaml
+
+          kubectl apply -f k8s/00-namespace.yaml
+          kubectl apply -f k8s/01-configmaps-secrets.yaml
+          kubectl apply -f k8s/02-infrastructure.yaml
+          kubectl apply -f k8s/03-backend-services.yaml
+          kubectl apply -f k8s/04-frontend.yaml
+          kubectl apply -f k8s/05-ingress.yaml
+
+      - name: Verify Rollout Status
+        run: |
+          kubectl rollout status deployment/frontend-web -n securebank --timeout=180s
+          kubectl rollout status deployment/api-gateway -n securebank --timeout=180s
+          kubectl rollout status deployment/auth-service -n securebank --timeout=180s
+          kubectl rollout status deployment/user-service -n securebank --timeout=180s
+          kubectl rollout status deployment/accounts-service -n securebank --timeout=180s

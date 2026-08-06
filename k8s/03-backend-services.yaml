@@ -24,6 +24,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -63,6 +73,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -102,6 +122,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -141,6 +171,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -180,6 +220,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -219,6 +269,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -250,7 +310,7 @@ spec:
       containers:
         - name: payments-service
           image: securebank/payments-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8086
           envFrom:
@@ -258,6 +318,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -289,7 +359,7 @@ spec:
       containers:
         - name: lending-service
           image: securebank/lending-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8087
           envFrom:
@@ -297,6 +367,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -328,7 +408,7 @@ spec:
       containers:
         - name: notification-service
           image: securebank/notification-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8088
           envFrom:
@@ -336,6 +416,16 @@ spec:
                 name: securebank-config
             - secretRef:
                 name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
@@ -367,9 +457,24 @@ spec:
       containers:
         - name: audit-recovery-service
           image: securebank/audit-recovery-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8089
+          envFrom:
+            - configMapRef:
+                name: securebank-config
+            - secretRef:
+                name: securebank-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
 ---
 apiVersion: v1
 kind: Service
