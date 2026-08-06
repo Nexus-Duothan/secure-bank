@@ -103,13 +103,34 @@ for ROLE in "${ROLES[@]}"; do
         --condition=None &>/dev/null
 done
 
-# Also grant Cloud Build SA permissions to write to Artifact Registry
+# Cloud Build runs as either the legacy build SA or the default compute SA,
+# depending on when the project was created. Configure both.
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
-BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${BUILD_SA}" \
-    --role="roles/artifactregistry.writer" \
-    --condition=None &>/dev/null || true
+BUILD_SAS=(
+    "${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+    "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+)
+
+for BUILD_SA in "${BUILD_SAS[@]}"; do
+    # Skip accounts that do not exist in this project
+    gcloud iam service-accounts describe "$BUILD_SA" &>/dev/null || continue
+
+    # The build SA needs to push images and write build logs
+    for BUILD_ROLE in "roles/artifactregistry.writer" "roles/logging.logWriter"; do
+        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="serviceAccount:${BUILD_SA}" \
+            --role="$BUILD_ROLE" \
+            --condition=None &>/dev/null || true
+    done
+
+    # The deployer SA must be allowed to run builds AS the build SA,
+    # otherwise `gcloud builds submit` fails with PERMISSION_DENIED.
+    gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA" \
+        --member="serviceAccount:${SA_EMAIL}" \
+        --role="roles/iam.serviceAccountUser" \
+        --condition=None &>/dev/null || true
+    echo "   ✅ ${SA_EMAIL} can act as ${BUILD_SA}"
+done
 
 # 5. Create Workload Identity Pool & Provider
 echo ""
