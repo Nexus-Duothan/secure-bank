@@ -102,6 +102,8 @@ export interface OpenAccountPayload {
   /** Product code from the bank's catalogue; always required. */
   productCode: string;
   ownershipType: 'INDIVIDUAL' | 'JOINT';
+  /** The customer's own name for the account; the product name is used when left empty. */
+  nickname?: string;
 }
 
 export interface LinkCreditCardPayload {
@@ -119,6 +121,8 @@ export interface LinkedCardResponse {
 export interface LinkAccountPayload {
   accountNumber: string;
   nationalIdOrPassport: string;
+  /** The customer's own name for the account; the bank's own label is kept when left empty. */
+  nickname?: string;
 }
 
 export interface LinkedAccountResponse {

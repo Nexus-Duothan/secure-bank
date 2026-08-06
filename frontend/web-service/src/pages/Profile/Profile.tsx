@@ -16,10 +16,15 @@ import {
 } from 'antd';
 import {
   CameraOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   EditOutlined,
   LeftOutlined,
   LogoutOutlined,
   RightOutlined,
+  SafetyCertificateOutlined,
+  StopOutlined,
+  VerifiedOutlined,
 } from '@ant-design/icons';
 import authService from '../../api/authService';
 import { getApiErrorMessage } from '../../api/apiError';
@@ -35,6 +40,8 @@ import tokenStorage from '../../api/tokenStorage';
 import sessionUser from '../../api/sessionUser';
 import TrustIndicator from '../../components/TrustIndicator';
 import BottomNav from '../../components/BottomNav';
+import { PasswordStrengthMeter } from '../../components/PasswordStrength';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_PATTERN } from '../../components/passwordRules';
 import { getProfilePhoto, saveProfilePhoto } from '../../utils/profilePhoto';
 
 const { Text, Title } = Typography;
@@ -51,6 +58,12 @@ interface ProfileLocationState {
   otpSuccessMessage?: string;
 }
 
+interface PasswordFormValues {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 interface SettingsRowItem {
   key: string;
   label: string;
@@ -64,8 +77,10 @@ interface SettingsRowProps extends SettingsRowItem {
 }
 
 interface SecurityStatusRowProps {
+  icon: React.ReactNode;
   label: string;
   value: string;
+  tone?: 'success' | 'warning' | 'danger';
 }
 
 interface DeviceRowProps {
@@ -177,19 +192,107 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
   );
 };
 
-const SecurityStatusRow: React.FC<SecurityStatusRowProps> = ({ label, value }) => (
-  <Flex justify="space-between" align="center">
-    <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14 }}>{label}</Text>
+const SecurityStatusRow: React.FC<SecurityStatusRowProps> = ({
+  icon,
+  label,
+  value,
+  tone = 'success',
+}) => {
+  const { token } = theme.useToken();
+  const toneStyles = {
+    success: {
+      bg: '#E7F6F1',
+      border: '#B7E4D9',
+      ink: token.colorPrimary,
+      dot: '#19C59F',
+    },
+    warning: {
+      bg: '#FFF7E6',
+      border: '#FFD591',
+      ink: '#AD6800',
+      dot: '#FAAD14',
+    },
+    danger: {
+      bg: '#FFF2F0',
+      border: '#FFCCC7',
+      ink: token.colorError,
+      dot: token.colorError,
+    },
+  }[tone];
+
+  return (
     <Flex
       align="center"
-      gap={6}
-      style={{ background: 'rgba(31,122,108,0.35)', padding: '4px 12px', borderRadius: 999 }}
+      gap={12}
+      style={{
+        padding: '14px 12px',
+        borderRadius: 12,
+        background: token.colorFillAlter,
+        minWidth: 0,
+      }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3FD6B8' }} />
-      <Text style={{ color: '#8FE3D2', fontSize: 12, fontWeight: 500 }}>{value}</Text>
+      <Flex
+        align="center"
+        justify="center"
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: toneStyles.bg,
+          color: toneStyles.ink,
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </Flex>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 6,
+            color: token.colorTextSecondary,
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {label}
+        </Text>
+        <Flex
+          align="center"
+          gap={6}
+          style={{
+            width: 'fit-content',
+            maxWidth: '100%',
+            padding: '4px 9px',
+            borderRadius: 999,
+            border: `1px solid ${toneStyles.border}`,
+            background: toneStyles.bg,
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: toneStyles.dot,
+              flexShrink: 0,
+            }}
+          />
+          <Text
+            style={{
+              color: toneStyles.ink,
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {value}
+          </Text>
+        </Flex>
+      </div>
     </Flex>
-  </Flex>
-);
+  );
+};
 
 const DeviceRow: React.FC<DeviceRowProps> = ({ device, busy, disabled, onVerify, onRevoke }) => {
   const { token } = theme.useToken();
@@ -260,6 +363,7 @@ const Profile: React.FC = () => {
   const [notificationForm] = Form.useForm<NotificationPreferences>();
   const [languageForm] = Form.useForm<{ language: string }>();
   const [freezeForm] = Form.useForm<{ reason: string }>();
+  const [passwordForm] = Form.useForm<PasswordFormValues>();
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
   const [account, setAccount] = useState<Account | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -270,7 +374,8 @@ const Profile: React.FC = () => {
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
-  const [passwordResetSubmitting, setPasswordResetSubmitting] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const newPassword = Form.useWatch('newPassword', passwordForm) ?? '';
 
   const activePanel = getPanelFromSearch(searchParams.get('panel'));
   const trustedDeviceCount = useMemo(
@@ -543,18 +648,25 @@ const Profile: React.FC = () => {
     setFreezeModalOpen(true);
   };
 
-  const handleChangePasswordRequest = async () => {
-    setPasswordResetSubmitting(true);
+  /**
+   * Checks the current password with the backend and stages the new one. The password only changes
+   * after the authenticator step, which then signs the customer out to sign in again.
+   */
+  const handlePasswordSave = async (values: PasswordFormValues) => {
+    setPasswordSubmitting(true);
     try {
-      const response = await authService.requestPasswordReset(profile.email);
-      messageApi.success('A secure password reset link has been issued for your account.');
-      navigate(`/reset-password/${response.token}`);
+      const challenge = await authService.requestPasswordChange({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      passwordForm.resetFields();
+      navigate('/verify-otp', { state: { flow: 'password-change', challenge } });
     } catch (error) {
       messageApi.error(
-        getApiErrorMessage(error, 'We could not start the password reset flow. Please try again.')
+        getApiErrorMessage(error, 'We could not start the password change. Please try again.')
       );
     } finally {
-      setPasswordResetSubmitting(false);
+      setPasswordSubmitting(false);
     }
   };
 
@@ -975,12 +1087,6 @@ const Profile: React.FC = () => {
           padding: 24,
         }}
       >
-        <Text style={{ display: 'block', marginBottom: 8, fontSize: 15, fontWeight: 600 }}>
-          Registered email
-        </Text>
-        <Text style={{ display: 'block', marginBottom: 18, color: token.colorTextSecondary }}>
-          {profile.email}
-        </Text>
         <Text
           style={{
             display: 'block',
@@ -990,21 +1096,67 @@ const Profile: React.FC = () => {
             color: token.colorTextSecondary,
           }}
         >
-          For your protection, password changes use our secure recovery flow. We will issue a reset
-          link to your registered email, and you will confirm the new password with your 6-digit
-          authenticator code.
+          Enter your current password and choose a new one. After you save, we ask for the code from
+          your authenticator app. You then sign in again with the new password.
         </Text>
-        <Button
-          type="primary"
-          block
-          size="large"
-          disabled={Boolean(profileLoadError)}
-          loading={passwordResetSubmitting}
-          onClick={handleChangePasswordRequest}
-          style={{ height: 52, fontWeight: 600 }}
+
+        <Form<PasswordFormValues>
+          form={passwordForm}
+          layout="vertical"
+          requiredMark={false}
+          disabled={passwordSubmitting}
+          onFinish={handlePasswordSave}
         >
-          Continue
-        </Button>
+          <Form.Item
+            label="Current password"
+            name="currentPassword"
+            rules={[{ required: true, message: 'Enter your current password' }]}
+          >
+            <Input.Password size="large" autoComplete="current-password" />
+          </Form.Item>
+
+          <Form.Item
+            label="New password"
+            name="newPassword"
+            style={{ marginBottom: 8 }}
+            rules={[
+              { required: true, message: 'Create a new password' },
+              { pattern: PASSWORD_PATTERN, message: PASSWORD_COMPLEXITY_MESSAGE },
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
+          </Form.Item>
+
+          <PasswordStrengthMeter password={newPassword} />
+
+          <Form.Item
+            label="Confirm new password"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: 'Confirm your new password' },
+              ({ getFieldValue }) => ({
+                validator: (_, value) =>
+                  !value || getFieldValue('newPassword') === value
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('Passwords do not match')),
+              }),
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
+          </Form.Item>
+
+          <Button
+            type="primary"
+            block
+            size="large"
+            htmlType="submit"
+            loading={passwordSubmitting}
+            style={{ height: 52, fontWeight: 600 }}
+          >
+            Save
+          </Button>
+        </Form>
       </div>
     );
   }
@@ -1106,34 +1258,74 @@ const Profile: React.FC = () => {
             border: `1px solid ${token.colorBorder}`,
           }}
         >
-          <Text
+          <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
+            <div>
+              <Text
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  color: token.colorTextTertiary,
+                }}
+              >
+                Security status
+              </Text>
+              <Text
+                style={{
+                  display: 'block',
+                  marginTop: 4,
+                  color: token.colorTextSecondary,
+                  fontSize: 13,
+                }}
+              >
+                Account protection at a glance
+              </Text>
+            </div>
+            <SafetyCertificateOutlined style={{ color: token.colorPrimary, fontSize: 22 }} />
+          </Flex>
+          <div
             style={{
-              display: 'block',
-              fontSize: 12,
-              fontWeight: 600,
-              letterSpacing: 0.4,
-              textTransform: 'uppercase',
-              color: token.colorTextTertiary,
-              marginBottom: 18,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 10,
             }}
           >
-            Security status
-          </Text>
-          <Flex vertical gap={16}>
             <SecurityStatusRow
+              icon={account?.frozen ? <StopOutlined /> : <CheckCircleOutlined />}
               label="Account status"
               value={account ? (account.frozen ? 'Frozen' : account.status) : 'Active'}
-            />
-            <SecurityStatusRow label="Two-factor authentication" value="Active" />
-            <SecurityStatusRow
-              label="Last verified session"
-              value={formatLastVerifiedSession(profile.linkedDevices)}
+              tone={account?.frozen ? 'danger' : 'success'}
             />
             <SecurityStatusRow
+              icon={<SafetyCertificateOutlined />}
+              label="Authenticator"
+              value="Active"
+            />
+            <SecurityStatusRow
+              icon={profile.idVerified ? <VerifiedOutlined /> : <ClockCircleOutlined />}
+              label="Identity"
+              value={profile.idVerified ? 'Verified' : 'Pending review'}
+              tone={profile.idVerified ? 'success' : 'warning'}
+            />
+            <SecurityStatusRow
+              icon={<CheckCircleOutlined />}
               label="Trusted devices"
               value={`${trustedDeviceCount} device${trustedDeviceCount === 1 ? '' : 's'}`}
             />
-          </Flex>
+          </div>
+          <Text
+            style={{
+              display: 'block',
+              marginTop: 14,
+              color: token.colorTextTertiary,
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            Last verified session: {formatLastVerifiedSession(profile.linkedDevices)}
+          </Text>
         </div>
 
         {sections.map((section) => (

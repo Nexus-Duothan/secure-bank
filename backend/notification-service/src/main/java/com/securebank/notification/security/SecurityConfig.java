@@ -34,6 +34,8 @@ public class SecurityConfig {
           // does not route to it, so it stays off the public surface.
           .requestMatchers(HttpMethod.POST, "/api/v1/notifications/otp-challenges")
           .permitAll()
+          .requestMatchers(HttpMethod.POST, "/api/v1/notifications/password-reset-links")
+          .permitAll()
           .anyRequest()
           .authenticated()
       )

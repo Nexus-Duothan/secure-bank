@@ -172,7 +172,7 @@ spec:
       containers:
         - name: accounts-service
           image: securebank/accounts-service:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8084
           envFrom:
@@ -211,7 +211,7 @@ spec:
       containers:
         - name: transfer-service
           image: securebank/transfer-service:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8085
           envFrom:

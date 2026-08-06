@@ -73,7 +73,6 @@ class UserServiceTest {
   @BeforeEach
   void setUp() {
     UserServiceProperties properties = new UserServiceProperties(
-      false,
       null,
       new UserServiceProperties.Otp(Duration.ofMinutes(5), MAX_ATTEMPTS),
       new UserServiceProperties.Security(false)

@@ -37,22 +37,25 @@ All endpoints are exposed under `/api/v1/payments`:
 
 No prior service in this repo calls another service over HTTP or publishes to Kafka, so the following are new, documented-here conventions rather than established patterns being followed:
 
-### Accounts Service Integration (not yet built)
+### Accounts Service Integration
 
-`accounts-service` is still a bare scaffold. `AccountsServiceClient` is built against an **assumed** contract so it's ready once that service ships:
+`accounts-service` owns the ledger. A vendor payment names the payer rather than an account, so the debit is addressed by customer and resolved there to that customer's primary account:
 
 ```
-POST http://localhost:8084/api/v1/accounts/{accountId}/debit
-Body: { "amount": 1500.00, "currency": "LKR", "reference": "<paymentId>" }
+POST http://localhost:8084/internal/v1/accounts/by-user/{userId}/debit
+Body: { "amount": 1500.00, "currency": "LKR", "reference": "<paymentId>",
+        "merchant": "...", "category": "...", "transactionType": "CARD_PAYMENT" }
 
 200 -> { "accountId": "...", "newBalance": 46731.76 }   (debit applied)
-404 -> account not found
-409 -> insufficient funds
+404 -> the customer has no account
+409 -> insufficient funds, or the account is frozen
 ```
 
-Until `accounts-service` exists, every `/pay` and `/qr/pay` call will fail with `503 Service Unavailable` in a real (non-test) environment — this is expected, not a bug. The debit call is load-bearing: it is never skipped, and its failure is never silently swallowed, because money must actually move before a payment is marked `COMPLETED`.
+The route lives under `/internal`, which the API gateway does not publish, so only services inside the cluster can move money this way. `reference` is the payment id: re-posting it is a no-op, so a retried call after a timeout cannot charge the customer twice.
 
-**Known limitation**: if a payment is flagged as high-velocity _after_ the debit already succeeded, there is currently no reversal call back to `accounts-service` (no such API exists yet either) — the payment is held for officer review, but the debited funds are not automatically returned. Revisit once `accounts-service` ships a reversal/credit endpoint.
+The debit call is load-bearing: it is never skipped, and its failure is never silently swallowed (it surfaces as `503`), because money must actually move before a payment is marked `COMPLETED`.
+
+**Known limitation**: if a payment is flagged as high-velocity _after_ the debit already succeeded, there is currently no reversal — the payment is held for officer review, but the debited funds are not automatically returned. `POST /internal/v1/accounts/{id}/credit` now exists to build that on.
 
 ### Audit & Fraud Hook (real, already built)
 

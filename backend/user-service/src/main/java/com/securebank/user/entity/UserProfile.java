@@ -18,8 +18,12 @@ import lombok.*;
 @Builder
 public class UserProfile {
 
+  /**
+   * Always the id auth-service holds for this customer, which is also the JWT subject the gateway
+   * forwards as {@code X-User-Id}. It is assigned, never generated: a profile with an id of its own
+   * would be unreachable, because every lookup here is by the caller's authenticated id.
+   */
   @Id
-  @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
 
   @Column(name = "full_name", nullable = false, length = 120)

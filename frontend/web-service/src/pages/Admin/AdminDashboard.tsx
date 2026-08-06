@@ -16,7 +16,6 @@ import type { UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
 
-/** Every service behind the gateway (see proposal §3.2). Health shown per FR-34. */
 const PLATFORM_SERVICES = [
   'API Gateway',
   'Auth Service',
@@ -125,7 +124,7 @@ const AdminDashboard: React.FC = () => {
           </Title>
         </Flex>
         <Text style={{ color: token.colorTextSecondary, fontSize: 12 }}>
-          Live status of every platform service (FR-34).
+          Live status of every platform service.
         </Text>
         <div style={{ marginTop: 12 }}>
           {PLATFORM_SERVICES.map((service, index) => (

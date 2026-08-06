@@ -8,7 +8,9 @@ import java.util.UUID;
 
 public record LoanApplicationResponse(
   UUID id,
+  UUID applicantUserId,
   String purpose,
+  String currency,
   BigDecimal amount,
   int termMonths,
   BigDecimal annualInterestRate,
@@ -21,7 +23,9 @@ public record LoanApplicationResponse(
   public static LoanApplicationResponse from(LoanApplication application) {
     return new LoanApplicationResponse(
       application.getId(),
+      application.getApplicantUserId(),
       application.getPurpose(),
+      "LKR",
       application.getAmount(),
       application.getTermMonths(),
       application.getAnnualInterestRate(),

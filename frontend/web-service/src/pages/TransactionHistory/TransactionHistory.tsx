@@ -69,7 +69,7 @@ const TransactionHistory: React.FC = () => {
         }
       })
       .catch(() => {
-        // Endpoint not available yet - fall back to the placeholder shown above.
+        // Leaves accountId unset, so the empty state below is shown.
       });
 
     return () => {
@@ -78,6 +78,12 @@ const TransactionHistory: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Nothing to ask for until the customer has an account.
+    if (!accountId) {
+      setTransactions([]);
+      return;
+    }
+
     let cancelled = false;
     accountsService
       .getTransactionHistory(accountId, {

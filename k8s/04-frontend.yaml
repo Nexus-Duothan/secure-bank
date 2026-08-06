@@ -16,7 +16,7 @@ spec:
       containers:
         - name: frontend-web
           image: securebank/frontend-web:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
 ---

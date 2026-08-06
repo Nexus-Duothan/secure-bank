@@ -8,6 +8,7 @@ import paymentsService, {
   type MerchantPayment,
   type MerchantSummary,
 } from '../../api/paymentsService';
+import { DEFAULT_CURRENCY } from '../../utils/currency';
 
 const { Text, Title } = Typography;
 
@@ -25,7 +26,7 @@ const formatTime = (iso: string) =>
 
 const DEFAULT_SUMMARY: MerchantSummary = {
   merchantName: 'Merchant',
-  currency: 'USD',
+  currency: DEFAULT_CURRENCY,
   todayTotal: 0,
   paymentsToday: 0,
   refundsToday: 0,
@@ -170,10 +171,10 @@ const MerchantDashboard: React.FC = () => {
               </Flex>
               <div style={{ minWidth: 0 }}>
                 <Text style={{ display: 'block', fontWeight: 600, fontSize: 14 }} ellipsis>
-                  {payment.payerName}
+                  Customer {payment.payerUserId.slice(0, 8)}
                 </Text>
                 <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                  {payment.method} • {formatTime(payment.timestamp)}
+                  {payment.channel} · {formatTime(payment.createdAt)}
                 </Text>
               </div>
             </Flex>

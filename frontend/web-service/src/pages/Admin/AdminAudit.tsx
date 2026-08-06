@@ -14,7 +14,6 @@ const formatAmount = (value: number, currency: string) =>
     minimumFractionDigits: 2,
   }).format(value);
 
-/** Read-only view of the immutable journal (FR-30). Nothing here can be edited. */
 const AdminAudit: React.FC = () => {
   const { token } = theme.useToken();
   const [entries, setEntries] = useState<AuditTransaction[]>([]);
@@ -46,7 +45,7 @@ const AdminAudit: React.FC = () => {
         <Flex align="center" gap={8}>
           <LockOutlined style={{ color: token.colorPrimary }} />
           <Text style={{ fontSize: 13, color: token.colorTextSecondary }}>
-            Append-only journal. Entries can never be changed or deleted (FR-30).
+            Append-only journal. Entries cannot be changed or deleted.
           </Text>
         </Flex>
       </Card>

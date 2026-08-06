@@ -82,9 +82,10 @@ mvn spring-boot:run
 
 The service will start on port `8081`.
 
-Local development accounts are expected to exist in the database already:
+No accounts are seeded. Register through `POST /api/v1/auth/register` (or the app's sign-up flow) to
+create one; registration also asks `user-service` to create the matching profile row, so the very
+first sign-in has real details to read. A failed provisioning call is retried on the next successful
+sign-in, so it is never left half-created.
 
-- Customer: `kaveesha.demo` / `SecureBank@123`
-- Merchant: `sahan.merchant` / `SecureBank@123`
-- Bank officer: `anjali.officer` / `SecureBankAdmin@123`
-- Admin: `nimali.admin` / `SecureBankAdmin@123`
+Give an account a staff role by registering it with `role` set, or by changing the role afterwards
+through `user-service`'s admin API.

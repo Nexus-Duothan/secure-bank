@@ -150,7 +150,19 @@ class LoanControllerTest {
       .andExpect(status().isOk())
       .andExpect(jsonPath("$[0].id").value(applicationId));
 
-    LoanApplicationReviewRequest approve = new LoanApplicationReviewRequest(true, null);
+    mockMvc
+      .perform(
+        post("/api/v1/loans/officer/" + applicationId + "/review")
+          .header("Authorization", "Bearer " + officerToken)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content(
+            objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null, "000000"))
+          )
+      )
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.message").value("Invalid authenticator code"));
+
+    LoanApplicationReviewRequest approve = new LoanApplicationReviewRequest(true, null, "123456");
     MvcResult reviewResult = mockMvc
       .perform(
         post("/api/v1/loans/officer/" + applicationId + "/review")
@@ -215,7 +227,9 @@ class LoanControllerTest {
         post("/api/v1/loans/officer/" + applicationId + "/review")
           .header("Authorization", "Bearer " + officerToken)
           .contentType(MediaType.APPLICATION_JSON)
-          .content(objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null)))
+          .content(
+            objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null, "123456"))
+          )
       )
       .andExpect(status().isOk())
       .andReturn();
@@ -252,7 +266,7 @@ class LoanControllerTest {
           .contentType(MediaType.APPLICATION_JSON)
           .content(
             objectMapper.writeValueAsString(
-              new LoanApplicationReviewRequest(false, "Insufficient income")
+              new LoanApplicationReviewRequest(false, "Insufficient income", "123456")
             )
           )
       )
@@ -276,7 +290,9 @@ class LoanControllerTest {
         post("/api/v1/loans/officer/" + applicationId + "/review")
           .header("Authorization", "Bearer " + selfReviewToken)
           .contentType(MediaType.APPLICATION_JSON)
-          .content(objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null)))
+          .content(
+            objectMapper.writeValueAsString(new LoanApplicationReviewRequest(true, null, "123456"))
+          )
       )
       .andExpect(status().isConflict());
 

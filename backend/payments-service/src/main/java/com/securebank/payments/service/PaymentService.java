@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securebank.payments.client.AccountsServiceClient;
 import com.securebank.payments.client.AuditRecoveryClient;
+import com.securebank.payments.client.TotpClient;
 import com.securebank.payments.client.dto.AccountDebitRequest;
+import com.securebank.payments.client.dto.AccountRefundRequest;
 import com.securebank.payments.client.dto.AnomalyReport;
 import com.securebank.payments.dto.*;
+import com.securebank.payments.entity.BillPayment;
 import com.securebank.payments.entity.Merchant;
 import com.securebank.payments.entity.VendorPayment;
 import com.securebank.payments.enums.PaymentChannel;
@@ -15,6 +18,7 @@ import com.securebank.payments.exception.ResourceNotFoundException;
 import com.securebank.payments.kafka.PaymentEventProducer;
 import com.securebank.payments.kafka.event.PaymentCompletedEvent;
 import com.securebank.payments.kafka.event.PaymentHeldEvent;
+import com.securebank.payments.repository.BillPaymentRepository;
 import com.securebank.payments.repository.VendorPaymentRepository;
 import com.securebank.payments.util.QrCodeDecoder;
 import com.securebank.payments.util.ReceiptReferenceGenerator;
@@ -36,7 +40,10 @@ public class PaymentService {
   /** security/audit-recovery-service's AnomalyEngine flags high-velocity activity at risk_score 75. */
   private static final int HIGH_VELOCITY_RISK_THRESHOLD = 75;
 
+  private final TotpClient totpClient;
+
   private final VendorPaymentRepository vendorPaymentRepository;
+  private final BillPaymentRepository billPaymentRepository;
   private final MerchantService merchantService;
   private final AccountsServiceClient accountsServiceClient;
   private final AuditRecoveryClient auditRecoveryClient;
@@ -55,6 +62,43 @@ public class PaymentService {
       PaymentChannel.DIRECT,
       request.getNote()
     );
+  }
+
+  public BillPaymentResponse payBill(UUID payerUserId, PayBillRequest request) {
+    if (!totpClient.verify(payerUserId, request.totpCode())) {
+      throw new IllegalArgumentException("Invalid authenticator code");
+    }
+
+    BillPayment payment = billPaymentRepository.save(
+      BillPayment.builder()
+        .payerUserId(payerUserId)
+        .fromAccountId(request.fromAccountId())
+        .billerCategory(request.billerCategory().trim())
+        .billerName(request.billerName().trim())
+        .referenceNumber(request.referenceNumber().trim())
+        .amount(request.amount())
+        .currency("LKR")
+        .status("PENDING")
+        .build()
+    );
+
+    accountsServiceClient.debitAccount(
+      payerUserId.toString(),
+      request.fromAccountId(),
+      AccountDebitRequest.builder()
+        .amount(request.amount())
+        .currency("LKR")
+        .reference("BILL-" + payment.getId())
+        .merchant(request.billerName().trim())
+        .category(request.billerCategory().trim())
+        .transactionType("BILL_PAYMENT")
+        .location("SecureBank Bill Pay")
+        .build()
+    );
+
+    payment.setStatus("COMPLETED");
+    payment.setCompletedAt(Instant.now());
+    return BillPaymentResponse.from(billPaymentRepository.save(payment));
   }
 
   public PaymentResponse payByQr(UUID payerUserId, QrPayRequest request) {
@@ -98,16 +142,19 @@ public class PaymentService {
         .build()
     );
 
-    // Debit is load-bearing: accounts-service doesn't exist yet, so this call fails until
-    // that service ships (see AccountsServiceClient). We deliberately let that exception
-    // propagate — GlobalExceptionHandler maps it to 503 — rather than mark the payment
-    // COMPLETED without the money having actually moved.
+    // Debit is load-bearing: the money moves in accounts-service, which owns the ledger. If that
+    // call fails we deliberately let the exception propagate — GlobalExceptionHandler maps it to
+    // 503 — rather than mark the payment COMPLETED without the money having actually moved.
     accountsServiceClient.debit(
       payerUserId.toString(),
       AccountDebitRequest.builder()
         .amount(amount)
         .currency(currency)
         .reference(payment.getId().toString())
+        .merchant(merchant.getBusinessName())
+        .category(merchant.getCategory() == null ? "Payments" : merchant.getCategory())
+        .transactionType("CARD_PAYMENT")
+        .location(channel == PaymentChannel.QR ? "QR payment" : "Vendor payment")
         .build()
     );
 
@@ -229,8 +276,50 @@ public class PaymentService {
       .toList();
   }
 
+  @Transactional(readOnly = true)
+  public List<PaymentResponse> getMerchantPayments(UUID merchantUserId) {
+    return vendorPaymentRepository
+      .findByMerchantMerchantUserIdOrderByCreatedAtDesc(merchantUserId)
+      .stream()
+      .map(this::toResponse)
+      .toList();
+  }
+
+  @Transactional
+  public PaymentResponse refund(UUID merchantUserId, UUID paymentId, String totpCode) {
+    if (!totpClient.verify(merchantUserId, totpCode)) {
+      throw new IllegalArgumentException("Invalid authenticator code");
+    }
+    VendorPayment payment = vendorPaymentRepository
+      .findById(paymentId)
+      .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+    if (!merchantUserId.equals(payment.getMerchant().getMerchantUserId())) {
+      throw new ResourceNotFoundException("Payment not found: " + paymentId);
+    }
+    if (payment.getStatus() != PaymentStatus.COMPLETED) {
+      throw new IllegalStateException("Only completed payments can be refunded");
+    }
+
+    accountsServiceClient.refund(
+      new AccountRefundRequest(
+        payment.getMerchant().getSettlementAccountId(),
+        payment.getPayerUserId().toString(),
+        payment.getAmount(),
+        payment.getCurrency(),
+        "refund:" + payment.getId(),
+        payment.getMerchant().getBusinessName()
+      )
+    );
+    payment.setStatus(PaymentStatus.REFUNDED);
+    payment.setNote("Refunded by merchant after TOTP verification");
+    return toResponse(vendorPaymentRepository.save(payment));
+  }
+
   @Transactional
   public PaymentResponse review(UUID paymentId, UUID officerId, PaymentReviewRequest request) {
+    if (!totpClient.verify(officerId, request.getTotpCode())) {
+      throw new IllegalArgumentException("Invalid authenticator code");
+    }
     VendorPayment payment = vendorPaymentRepository
       .findById(paymentId)
       .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));

@@ -2,6 +2,7 @@ package com.securebank.notification.service;
 
 import com.securebank.notification.OtpChallengeDeliveryRequest;
 import com.securebank.notification.OtpChallengeDeliveryResponse;
+import com.securebank.notification.PasswordResetDeliveryRequest;
 import com.securebank.notification.dispatcher.NotificationDispatcher;
 import com.securebank.notification.enums.NotificationChannel;
 import com.securebank.notification.enums.NotificationType;
@@ -69,6 +70,30 @@ public class OtpChallengeDeliveryService {
     return new OtpChallengeDeliveryResponse("queued", List.copyOf(queued), "");
   }
 
+  public OtpChallengeDeliveryResponse queuePasswordResetLink(PasswordResetDeliveryRequest request) {
+    String title = "SecureBank password update link";
+    String message =
+      "Hello " +
+      request.fullName() +
+      ", use this secure link to update your SecureBank password: " +
+      request.resetUrl() +
+      ". The link expires at " +
+      EXPIRY_FORMAT.format(request.expiresAt()) +
+      ".";
+
+    List<String> queued = new ArrayList<>();
+    dispatch(NotificationChannel.EMAIL, request.userId(), title, message, request.email(), queued);
+
+    if (queued.isEmpty()) {
+      log.warn(
+        "No delivery channel available for password reset link of user {}",
+        request.userId()
+      );
+      return new OtpChallengeDeliveryResponse("not-queued", List.of(), "");
+    }
+    return new OtpChallengeDeliveryResponse("queued", List.copyOf(queued), "");
+  }
+
   private void dispatch(
     NotificationChannel channel,
     OtpChallengeDeliveryRequest request,
@@ -83,6 +108,30 @@ public class OtpChallengeDeliveryService {
     }
     boolean delivered = dispatcher.dispatch(
       request.userId(),
+      NotificationType.SECURITY_ALERT,
+      title,
+      message,
+      recipient.trim()
+    );
+    if (delivered) {
+      queued.add(channel.name().toLowerCase());
+    }
+  }
+
+  private void dispatch(
+    NotificationChannel channel,
+    java.util.UUID userId,
+    String title,
+    String message,
+    String recipient,
+    List<String> queued
+  ) {
+    NotificationDispatcher dispatcher = dispatchers.get(channel);
+    if (dispatcher == null || !hasText(recipient)) {
+      return;
+    }
+    boolean delivered = dispatcher.dispatch(
+      userId,
       NotificationType.SECURITY_ALERT,
       title,
       message,

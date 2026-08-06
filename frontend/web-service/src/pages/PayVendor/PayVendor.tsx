@@ -8,14 +8,16 @@ import {
   Form,
   Input,
   InputNumber,
-  Select,
+  Modal,
   Typography,
   theme,
 } from 'antd';
+import { SafetyCertificateOutlined } from '@ant-design/icons';
 import type { AxiosError } from 'axios';
 import accountsService, { type Account } from '../../api/accountsService';
 import accountSelection from '../../api/accountSelection';
 import paymentsService from '../../api/paymentsService';
+import { currencyOf, formatMoney } from '../../utils/currency';
 const { Text, Title } = Typography;
 
 type BillerCategory = 'Electricity' | 'Water' | 'Internet' | 'Mobile';
@@ -40,26 +42,25 @@ interface PayBillFormValues {
   biller: string;
   reference: string;
   amount: number;
-  fromAccountId: string;
 }
 
 const fieldLabel = (text: string, color: string) => (
   <span style={{ fontWeight: 600, fontSize: 13, color }}>{text}</span>
 );
 
-const formatCurrency = (currency: string, value: number) =>
-  `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(value)}`;
-
 const PayVendor: React.FC = () => {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [form] = Form.useForm<PayBillFormValues>();
   const [fromAccount, setFromAccount] = useState<Account | null>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
   const [category, setCategory] = useState<BillerCategory>('Electricity');
   const [amount, setAmount] = useState<number>(BILLER_PRESETS.Electricity.amount);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<PayBillFormValues | null>(null);
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Fixed by the account being debited; the customer only types the amount.
+  const accountCurrency = currencyOf(fromAccount);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +72,6 @@ const PayVendor: React.FC = () => {
             data.find((account) => account.id === accountSelection.getSelectedAccountId()) ??
             data[0];
           accountSelection.setSelectedAccountId(selected.id);
-          setAccounts(data);
           setFromAccount(selected);
         }
       })
@@ -82,12 +82,6 @@ const PayVendor: React.FC = () => {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (fromAccount) {
-      form.setFieldValue('fromAccountId', fromAccount.id);
-    }
-  }, [fromAccount, form]);
 
   const applyCategory = (nextCategory: BillerCategory) => {
     setCategory(nextCategory);
@@ -100,17 +94,30 @@ const PayVendor: React.FC = () => {
     setAmount(preset.amount);
   };
 
-  const handleFinish = async (values: PayBillFormValues) => {
+  const handleFinish = (values: PayBillFormValues) => {
+    if (!fromAccount) {
+      setError('An active account is required to pay a bill.');
+      return;
+    }
+    setError(null);
+    setTotpCode('');
+    setPendingPayment(values);
+  };
+
+  const verifyAndPay = async () => {
+    if (!fromAccount || !pendingPayment || totpCode.length !== 6) return;
     setSubmitting(true);
     setError(null);
     try {
       await paymentsService.payBill({
         billerCategory: category,
-        billerName: values.biller,
-        referenceNumber: values.reference,
-        amount: values.amount,
-        fromAccountId: values.fromAccountId,
+        billerName: pendingPayment.biller,
+        referenceNumber: pendingPayment.reference,
+        amount: pendingPayment.amount,
+        fromAccountId: fromAccount.id,
+        totpCode,
       });
+      setPendingPayment(null);
       navigate('/dashboard');
     } catch (err) {
       const axiosError = err as AxiosError<{ message?: string }>;
@@ -122,11 +129,6 @@ const PayVendor: React.FC = () => {
       setSubmitting(false);
     }
   };
-
-  const fromAccountOptions = accounts.map((account) => ({
-    value: account.id,
-    label: `${account.nickname} - ${formatCurrency(account.currency, account.balance)}`,
-  }));
 
   return (
     <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -182,7 +184,6 @@ const PayVendor: React.FC = () => {
               biller: BILLER_PRESETS.Electricity.biller,
               reference: BILLER_PRESETS.Electricity.reference,
               amount: BILLER_PRESETS.Electricity.amount,
-              fromAccountId: fromAccount?.id,
             }}
             onValuesChange={(changed) => {
               if (typeof changed.amount === 'number') setAmount(changed.amount);
@@ -218,29 +219,27 @@ const PayVendor: React.FC = () => {
                 style={{ width: '100%' }}
                 controls={false}
                 min={0}
-                placeholder="LKR 0.00"
-                formatter={(value) => (value === undefined || value === null ? '' : `LKR ${value}`)}
-                parser={(value) => {
-                  const numeric = Number((value ?? '').replace(/[^0-9.]/g, ''));
-                  return Number.isNaN(numeric) ? 0 : numeric;
-                }}
+                addonBefore={accountCurrency}
+                placeholder="0.00"
+                precision={2}
               />
             </Form.Item>
 
-            <Form.Item
-              label={fieldLabel('Pay from', token.colorText)}
-              name="fromAccountId"
-              style={{ marginBottom: 0 }}
-              rules={[{ required: true, message: 'Please select an account to pay from' }]}
-            >
-              <Select
-                size="large"
-                options={fromAccountOptions}
-                onChange={(accountId) => {
-                  const selected = accounts.find((account) => account.id === accountId);
-                  if (selected) setFromAccount(selected);
+            <Form.Item label={fieldLabel('Pay from', token.colorText)} style={{ marginBottom: 0 }}>
+              <div
+                style={{
+                  height: 44,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${token.colorBorder}`,
+                  color: token.colorTextTertiary,
                 }}
-              />
+              >
+                {fromAccount?.nickname || 'Account'} -{' '}
+                {formatMoney(fromAccount?.balance || 0, accountCurrency)}
+              </div>
             </Form.Item>
           </Form>
         </Card>
@@ -253,8 +252,42 @@ const PayVendor: React.FC = () => {
           style={{ fontWeight: 600, height: 52, marginTop: 24 }}
           onClick={() => form.submit()}
         >
-          Pay {formatCurrency(fromAccount?.currency || 'USD', amount || 0)}
+          Pay {formatMoney(amount || 0, accountCurrency)}
         </Button>
+
+        <Modal
+          open={pendingPayment !== null}
+          title="Verify bill payment"
+          footer={null}
+          onCancel={() => !submitting && setPendingPayment(null)}
+          destroyOnClose
+        >
+          <Alert
+            type="warning"
+            showIcon
+            icon={<SafetyCertificateOutlined />}
+            message="Authenticator code required"
+            description="Your account will only be debited after this code is verified."
+            style={{ marginBottom: 20 }}
+          />
+          {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
+          <Flex vertical gap={16} align="center">
+            <Text strong>
+              {pendingPayment && formatMoney(pendingPayment.amount, accountCurrency)}
+            </Text>
+            <Input.OTP length={6} value={totpCode} onChange={setTotpCode} size="large" />
+            <Button
+              type="primary"
+              size="large"
+              block
+              loading={submitting}
+              disabled={totpCode.length !== 6}
+              onClick={() => void verifyAndPay()}
+            >
+              Verify and pay bill
+            </Button>
+          </Flex>
+        </Modal>
       </div>
     </div>
   );

@@ -42,8 +42,8 @@ securebank:
       ttl: PT5M
       max-attempts: 5
     accounts-client:
-      # accounts-service has no real ledger yet (mocked balances) - this base URL is the seam
-      # that starts returning live balances once that service is implemented.
+      # accounts-service owns the ledger; balances are read and movements are posted through its
+      # /internal routes, which the API gateway does not publish.
       base-url: ${ACCOUNTS_SERVICE_BASE_URL:http://localhost:8084}
     security:
       # Local prototype escape hatch only, mirrors user-service. Keep false unless you explicitly

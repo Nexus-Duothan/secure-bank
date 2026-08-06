@@ -13,6 +13,7 @@ import com.securebank.user.dto.NotificationPreferencesResponse;
 import com.securebank.user.dto.NotificationPreferencesUpdateRequest;
 import com.securebank.user.dto.OtpChallengeResponse;
 import com.securebank.user.dto.ProfileUpdateRequest;
+import com.securebank.user.dto.ProvisionProfileRequest;
 import com.securebank.user.dto.RoleUpdateRequest;
 import com.securebank.user.dto.StatusUpdateRequest;
 import com.securebank.user.dto.UserDeviceResponse;
@@ -70,6 +71,31 @@ public class UserService {
   @Transactional(readOnly = true)
   public UserProfileResponse getProfile(CallerIdentity caller) {
     return toProfileResponse(findUser(caller.userId()));
+  }
+
+  /**
+   * Creates the profile for a customer auth-service has just registered, so their very first
+   * sign-in reads a real row rather than nothing. Idempotent: if the profile already exists it is
+   * returned untouched, because the customer's own edits must outrank a replayed provisioning call.
+   */
+  @Transactional
+  public UserProfileResponse provisionProfile(ProvisionProfileRequest request) {
+    return toProfileResponse(
+      userProfileRepository.findById(request.id()).orElseGet(() ->
+        userProfileRepository.save(
+          UserProfile.builder()
+            .id(request.id())
+            .fullName(request.fullName())
+            .email(request.email())
+            .phoneNumber(request.phoneNumber())
+            .role(request.role())
+            .status(request.status())
+            // KYC has not been reviewed yet at registration time.
+            .idVerified(request.status() == UserStatus.ACTIVE)
+            .build()
+        )
+      )
+    );
   }
 
   @Transactional

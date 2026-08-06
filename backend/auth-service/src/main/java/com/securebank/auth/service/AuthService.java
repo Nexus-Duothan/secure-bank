@@ -1,6 +1,7 @@
 package com.securebank.auth.service;
 
 import com.securebank.auth.client.TotpClient;
+import com.securebank.auth.client.UserProfileProvisioningClient;
 import com.securebank.auth.dto.*;
 import com.securebank.auth.entity.PasswordResetToken;
 import com.securebank.auth.entity.UserCredential;
@@ -15,7 +16,10 @@ import com.securebank.auth.service.notification.LoginSmsAlertService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +28,19 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
+  private static final String DEMO_REGISTRATION_OTP = "123456";
+  private static final int TOTP_MAX_ATTEMPTS = 5;
+  private static final long PASSWORD_CHANGE_TTL_SECONDS = 300;
+  /** Codes come from the authenticator app, so there is no phone number or inbox to name. */
+  private static final String TOTP_DELIVERY_TARGET = "Authenticator app";
+
+  /**
+   * Password changes waiting for their authenticator code. Held in memory only: an in-flight
+   * confirmation is not customer data, and losing it on restart just means starting again.
+   */
+  private final ConcurrentMap<UUID, PendingPasswordChange> pendingPasswordChanges =
+    new ConcurrentHashMap<>();
+
   private final UserCredentialRepository userRepository;
   private final UserSessionRepository sessionRepository;
   private final PasswordResetTokenRepository passwordResetTokenRepository;
@@ -31,6 +48,10 @@ public class AuthService {
   private final JwtTokenProvider tokenProvider;
   private final LoginSmsAlertService loginSmsAlertService;
   private final TotpClient totpClient;
+  private final UserProfileProvisioningClient userProfileProvisioningClient;
+
+  @Value("${frontend.url:http://localhost:3000}")
+  private String frontendUrl;
 
   @Transactional
   public RegisterResponse register(RegisterRequest request) {
@@ -56,13 +77,15 @@ public class AuthService {
       .build();
 
     UserCredential saved = userRepository.save(user);
+    // Give the customer a real profile straight away, so the first sign-in has details to read.
+    userProfileProvisioningClient.provision(saved);
 
     loginSmsAlertService.sendRegistrationOtpChallenge(
       saved.getId(),
       saved.getFullName(),
       saved.getPhoneNumber(),
       saved.getEmail(),
-      "123456"
+      DEMO_REGISTRATION_OTP
     );
 
     return RegisterResponse.builder()
@@ -73,6 +96,32 @@ public class AuthService {
       .status(saved.getStatus())
       .message("User registered successfully. Please submit KYC documentation.")
       .build();
+  }
+
+  @Transactional(readOnly = true)
+  public java.util.Map<String, Object> verifyRegistrationPhone(
+    RegistrationOtpVerifyRequest request
+  ) {
+    UserCredential user = userRepository
+      .findById(request.getUserId())
+      .orElseThrow(() -> new IllegalArgumentException("User not found for phone verification"));
+
+    if (!DEMO_REGISTRATION_OTP.equals(request.getCode())) {
+      throw new IllegalArgumentException("Invalid or expired SMS verification code");
+    }
+
+    return java.util.Map.of(
+      "success",
+      true,
+      "userId",
+      user.getId(),
+      "username",
+      user.getUsername(),
+      "email",
+      user.getEmail(),
+      "message",
+      "Mobile number verified. Continue with authenticator setup."
+    );
   }
 
   @Transactional(readOnly = true)
@@ -113,12 +162,6 @@ public class AuthService {
         user = userRepository.findById(userId).orElse(null);
       }
     }
-    if (user == null && request.getPreAuthToken() != null) {
-      try {
-        UUID userId = UUID.fromString(request.getPreAuthToken());
-        user = userRepository.findById(userId).orElse(null);
-      } catch (IllegalArgumentException ignored) {}
-    }
     if (user == null) {
       throw new IllegalArgumentException("Invalid or expired pre-authentication token");
     }
@@ -127,6 +170,10 @@ public class AuthService {
     if (!totpClient.verify(user.getId(), request.getTotpCode())) {
       throw new IllegalArgumentException("Invalid 6-digit TOTP code");
     }
+
+    // Catches up anyone whose profile could not be created at registration time; it is a no-op
+    // for everyone else.
+    userProfileProvisioningClient.provision(user);
 
     AuthTokenResponse response = createSessionAndGenerateTokens(user, ipAddress, userAgent);
     loginSmsAlertService.sendSuccessfulLoginAlert(
@@ -173,7 +220,7 @@ public class AuthService {
       user.getFullName(),
       user.getPhoneNumber(),
       user.getEmail(),
-      "123456"
+      DEMO_REGISTRATION_OTP
     );
 
     return java.util.Map.of(
@@ -240,22 +287,116 @@ public class AuthService {
     sessionRepository.save(session);
   }
 
+  // --------------------------------------------------------------------
+  // Changing the password while signed in (FR-05)
+  // --------------------------------------------------------------------
+
+  /**
+   * Checks the current password and stages the new one. Nothing is written to the user yet: the
+   * change is held for five minutes and only applied once the authenticator code is confirmed.
+   */
+  @Transactional(readOnly = true)
+  public OtpChallengeResponse requestPasswordChange(UUID userId, PasswordChangeRequest request) {
+    UserCredential user = userRepository
+      .findById(userId)
+      .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+      throw new IllegalArgumentException("Your current password is incorrect");
+    }
+    if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+      throw new IllegalArgumentException("Choose a new password you have not used before");
+    }
+
+    // Hash now, so the raw password is never held while the change waits for its code.
+    UUID changeRequestId = UUID.randomUUID();
+    Instant expiresAt = Instant.now().plusSeconds(PASSWORD_CHANGE_TTL_SECONDS);
+    pendingPasswordChanges.put(
+      changeRequestId,
+      new PendingPasswordChange(userId, passwordEncoder.encode(request.getNewPassword()), expiresAt)
+    );
+
+    return new OtpChallengeResponse(
+      changeRequestId,
+      "CHANGE_PASSWORD",
+      TOTP_DELIVERY_TARGET,
+      expiresAt,
+      "Enter the current six digit code from your authenticator app to change your password.",
+      null
+    );
+  }
+
+  /**
+   * Applies a staged password change and revokes every session, including the caller's own, so the
+   * customer signs in again with the new password.
+   */
   @Transactional
-  public String requestPasswordReset(PasswordResetRequest request) {
+  public void confirmPasswordChange(
+    UUID userId,
+    UUID changeRequestId,
+    PasswordChangeConfirmRequest request
+  ) {
+    PendingPasswordChange pending = pendingPasswordChanges.get(changeRequestId);
+    if (pending == null || !pending.userId().equals(userId)) {
+      throw new IllegalArgumentException("Password change request not found");
+    }
+    if (pending.expiresAt().isBefore(Instant.now())) {
+      pendingPasswordChanges.remove(changeRequestId);
+      throw new IllegalArgumentException("This password change request has expired");
+    }
+    if (pending.failedAttempts() >= TOTP_MAX_ATTEMPTS) {
+      pendingPasswordChanges.remove(changeRequestId);
+      throw new IllegalArgumentException(
+        "Too many incorrect codes for this request; start the password change again"
+      );
+    }
+
+    UserCredential user = userRepository
+      .findById(userId)
+      .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    if (!totpClient.verify(user.getId(), request.getTotpCode())) {
+      pending.incrementAttempts();
+      throw new IllegalArgumentException("Invalid 6-digit TOTP code");
+    }
+
+    user.setPasswordHash(pending.passwordHash());
+    userRepository.save(user);
+    pendingPasswordChanges.remove(changeRequestId);
+
+    revokeAllSessions(user.getId());
+
+    loginSmsAlertService.sendPasswordChangedAlert(
+      user.getPhoneNumber(),
+      user.getEmail(),
+      user.getFullName(),
+      Instant.now()
+    );
+  }
+
+  @Transactional
+  public void requestPasswordReset(PasswordResetRequest request) {
     UserCredential user = userRepository
       .findByEmail(request.getEmail())
       .orElseThrow(() -> new IllegalArgumentException("No user found with the provided email"));
 
     String resetToken = UUID.randomUUID().toString();
+    Instant expiresAt = Instant.now().plusSeconds(900);
     PasswordResetToken tokenEntity = PasswordResetToken.builder()
       .userId(user.getId())
       .token(resetToken)
-      .expiryDate(Instant.now().plusSeconds(900)) // 15 minutes
+      .expiryDate(expiresAt) // 15 minutes
       .used(false)
       .build();
 
     passwordResetTokenRepository.save(tokenEntity);
-    return resetToken;
+    loginSmsAlertService.sendPasswordResetLink(
+      user.getId(),
+      user.getEmail(),
+      user.getFullName(),
+      buildPasswordResetUrl(resetToken),
+      expiresAt
+    );
   }
 
   @Transactional
@@ -276,16 +417,17 @@ public class AuthService {
       .findById(resetToken.getUserId())
       .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
+    if (!totpClient.verify(user.getId(), request.getTotpCode())) {
+      throw new IllegalArgumentException("Invalid 6-digit TOTP code");
+    }
+
     user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
     userRepository.save(user);
 
     resetToken.setUsed(true);
     passwordResetTokenRepository.save(resetToken);
 
-    // Revoke all active sessions for security
-    List<UserSession> activeSessions = sessionRepository.findByUserIdAndRevokedFalse(user.getId());
-    activeSessions.forEach(session -> session.setRevoked(true));
-    sessionRepository.saveAll(activeSessions);
+    revokeAllSessions(user.getId());
 
     loginSmsAlertService.sendPasswordChangedAlert(
       user.getPhoneNumber(),
@@ -359,5 +501,54 @@ public class AuthService {
     if (userAgent.contains("Chrome")) return "Chrome Desktop";
     if (userAgent.contains("Firefox")) return "Firefox Desktop";
     return "Desktop Device";
+  }
+
+  private String buildPasswordResetUrl(String resetToken) {
+    String baseUrl = frontendUrl.endsWith("/")
+      ? frontendUrl.substring(0, frontendUrl.length() - 1)
+      : frontendUrl;
+    return baseUrl + "/reset-password/" + resetToken;
+  }
+
+  /** Signs the customer out everywhere after their password changes, on every device. */
+  private void revokeAllSessions(UUID userId) {
+    List<UserSession> activeSessions = sessionRepository.findByUserIdAndRevokedFalse(userId);
+    activeSessions.forEach(session -> session.setRevoked(true));
+    sessionRepository.saveAll(activeSessions);
+  }
+
+  /** A password change waiting for its authenticator code. */
+  private static final class PendingPasswordChange {
+
+    private final UUID userId;
+    private final String passwordHash;
+    private final Instant expiresAt;
+    private int failedAttempts;
+
+    private PendingPasswordChange(UUID userId, String passwordHash, Instant expiresAt) {
+      this.userId = userId;
+      this.passwordHash = passwordHash;
+      this.expiresAt = expiresAt;
+    }
+
+    private UUID userId() {
+      return userId;
+    }
+
+    private String passwordHash() {
+      return passwordHash;
+    }
+
+    private Instant expiresAt() {
+      return expiresAt;
+    }
+
+    private int failedAttempts() {
+      return failedAttempts;
+    }
+
+    private void incrementAttempts() {
+      this.failedAttempts++;
+    }
   }
 }

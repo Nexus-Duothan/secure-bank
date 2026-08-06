@@ -34,8 +34,8 @@ export const transferService = {
         headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
       })
       .then((response) => response.data),
-  confirmTransfer: (id: string) =>
-    client.post<TransferResponse>(`/${id}/confirm`).then((response) => response.data),
+  confirmTransfer: (id: string, totpCode: string) =>
+    client.post<TransferResponse>(`/${id}/confirm`, { totpCode }).then((response) => response.data),
   getTransfer: (id: string) =>
     client.get<TransferResponse>(`/${id}`).then((response) => response.data),
 };

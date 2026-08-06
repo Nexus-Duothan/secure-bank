@@ -67,6 +67,49 @@ public class LoggingLoginSmsAlertService implements LoginSmsAlertService {
   }
 
   @Override
+  public void sendPasswordResetLink(
+    UUID userId,
+    String email,
+    String fullName,
+    String resetUrl,
+    Instant expiresAt
+  ) {
+    log.info(
+      "Dispatching password update link for user {} ({}) to email {}",
+      userId,
+      fullName,
+      email
+    );
+    try {
+      restClient
+        .post()
+        .uri("/api/v1/notifications/password-reset-links")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(
+          Map.of(
+            "userId",
+            userId.toString(),
+            "fullName",
+            fullName != null ? fullName : "SecureBank Customer",
+            "email",
+            email != null ? email : "",
+            "resetUrl",
+            resetUrl,
+            "expiresAt",
+            expiresAt.toString()
+          )
+        )
+        .retrieve()
+        .toBodilessEntity();
+    } catch (Exception exception) {
+      log.warn(
+        "Unable to dispatch password update link via notification-service (fallback to log-only): {}",
+        exception.getMessage()
+      );
+    }
+  }
+
+  @Override
   public void sendRegistrationOtpChallenge(
     UUID userId,
     String fullName,

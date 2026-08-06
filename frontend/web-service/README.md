@@ -67,8 +67,12 @@ VITE_API_PROXY_TARGET=http://localhost:8080 npm run dev
 VITE_USER_API_BASE=http://localhost:8083/api/v1/users npm run dev
 ```
 
-If the backend is unreachable, the app falls back to a local preview of the demo profile and shows a banner. Changes made in that mode are not saved.
+Every screen shows what the backend returns and nothing else. There is no offline preview and no
+sample portfolio: a customer who has just registered sees an empty dashboard with a prompt to open
+an account, and balances and activity appear only once something actually posts to the ledger.
 
-If `SECUREBANK_USER_OTP_EXPOSE_CODE=true` is enabled on `user-service`, the generated OTP is returned in the challenge response and shown on the OTP screen for local browser-only demos. With the safer default, the code must arrive through the notification flow instead.
+Confirmation codes always come from the customer's authenticator app; none is ever returned in an
+API response for the UI to display.
 
-The **Admin / RBAC** screen stands in for a signed-in staff session: it loads the directory as the seeded administrator so the backend authorisation rules are exercised for real.
+The **Admin / RBAC** screen loads the user directory as the signed-in staff member, so the backend
+authorisation rules are exercised for real.

@@ -57,9 +57,8 @@ const Accounts: React.FC = () => {
         if (cancelled) return;
         const available = data || [];
         if (available.length > 0) {
-          const nextSelected = available.some((account) => account.id === selectedId)
-            ? selectedId
-            : available[0].id;
+          const nextSelected =
+            available.find((account) => account.id === selectedId)?.id ?? available[0].id;
           accountSelection.setSelectedAccountId(nextSelected);
           setSelectedId(nextSelected);
         }

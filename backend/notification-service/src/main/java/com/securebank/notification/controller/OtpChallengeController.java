@@ -2,6 +2,7 @@ package com.securebank.notification.controller;
 
 import com.securebank.notification.OtpChallengeDeliveryRequest;
 import com.securebank.notification.OtpChallengeDeliveryResponse;
+import com.securebank.notification.PasswordResetDeliveryRequest;
 import com.securebank.notification.service.OtpChallengeDeliveryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,5 +34,13 @@ public class OtpChallengeController {
     @Valid @RequestBody OtpChallengeDeliveryRequest request
   ) {
     return otpChallengeDeliveryService.queueOtpChallenge(request);
+  }
+
+  @PostMapping("/password-reset-links")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public OtpChallengeDeliveryResponse queuePasswordResetLink(
+    @Valid @RequestBody PasswordResetDeliveryRequest request
+  ) {
+    return otpChallengeDeliveryService.queuePasswordResetLink(request);
   }
 }

@@ -2,6 +2,7 @@ package com.securebank.payments.client;
 
 import com.securebank.payments.client.dto.AccountDebitRequest;
 import com.securebank.payments.client.dto.AccountDebitResponse;
+import com.securebank.payments.client.dto.AccountRefundRequest;
 import java.math.BigDecimal;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
@@ -28,5 +29,22 @@ public class FakeAccountsServiceClient extends AccountsServiceClient {
       .accountId(accountId)
       .newBalance(BigDecimal.valueOf(1_000_000))
       .build();
+  }
+
+  @Override
+  public AccountDebitResponse debitAccount(
+    String payerUserId,
+    String accountId,
+    AccountDebitRequest request
+  ) {
+    return AccountDebitResponse.builder()
+      .accountId(accountId)
+      .newBalance(BigDecimal.valueOf(1_000_000))
+      .build();
+  }
+
+  @Override
+  public void refund(AccountRefundRequest request) {
+    // The accounts-service integration has its own atomic refund tests.
   }
 }

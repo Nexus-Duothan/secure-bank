@@ -57,7 +57,7 @@ const ForgotPassword: React.FC = () => {
         {!sentEmail ? (
           <>
             <Paragraph style={{ color: token.colorTextSecondary, marginBottom: 24 }}>
-              Enter the email linked to your account and we'll send you a reset link.
+              Enter the email linked to your account and we'll send you a password update link.
             </Paragraph>
 
             <Form<ForgotPasswordFormValues>
@@ -86,7 +86,7 @@ const ForgotPassword: React.FC = () => {
                   loading={submitting}
                   style={{ fontWeight: 600 }}
                 >
-                  Send reset link
+                  Send update link
                 </Button>
               </Form.Item>
             </Form>
@@ -97,8 +97,8 @@ const ForgotPassword: React.FC = () => {
               style={{ fontSize: 40, color: token.colorPrimary, marginBottom: 16 }}
             />
             <Paragraph style={{ color: token.colorText, marginBottom: 0 }}>
-              If an account exists for <strong>{sentEmail}</strong>, a reset link has been sent.
-              Check your inbox.
+              If an account exists for <strong>{sentEmail}</strong>, a password update link has been
+              sent. Check your inbox.
             </Paragraph>
 
             <div style={{ marginTop: 20 }}>

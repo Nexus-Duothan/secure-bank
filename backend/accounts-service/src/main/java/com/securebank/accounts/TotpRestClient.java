@@ -31,7 +31,8 @@ public class TotpRestClient implements TotpClient {
         .body(Map.of("userId", userId.toString(), "code", code))
         .retrieve()
         .toEntity(Map.class);
-      return response.getStatusCode().is2xxSuccessful();
+      Object valid = response.getBody() == null ? null : response.getBody().get("valid");
+      return response.getStatusCode().is2xxSuccessful() && Boolean.TRUE.equals(valid);
     } catch (Exception exception) {
       // Fail closed: an unreachable totp-service must never let an unverified code through.
       log.warn("TOTP verification call failed, rejecting the code: {}", exception.getMessage());

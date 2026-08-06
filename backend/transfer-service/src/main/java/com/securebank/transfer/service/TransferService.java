@@ -2,6 +2,8 @@ package com.securebank.transfer.service;
 
 import com.securebank.transfer.client.AccountSnapshot;
 import com.securebank.transfer.client.AccountsClient;
+import com.securebank.transfer.client.LedgerEntry;
+import com.securebank.transfer.client.TotpClient;
 import com.securebank.transfer.config.TransferServiceProperties;
 import com.securebank.transfer.dto.TransferQuoteRequest;
 import com.securebank.transfer.dto.TransferResponse;
@@ -37,8 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class TransferService {
 
-  // The platform has no multi-currency support yet; every account in the mocked accounts-service
-  // data is LKR, so this is a placeholder until accounts-service exposes real per-account currency.
+  // The platform has no multi-currency support yet; every product accounts-service offers is in
+  // LKR, so this is a placeholder until per-account currency is settled end to end.
   private static final String DEFAULT_CURRENCY = "LKR";
   // Internal A2A transfers are fee-free and instant, matching what the frontend already displays.
   private static final BigDecimal FEE = BigDecimal.ZERO;
@@ -52,6 +54,7 @@ public class TransferService {
   private final AccountsClient accountsClient;
   private final TransferServiceProperties properties;
   private final TransferEventPublisher eventPublisher;
+  private final TotpClient totpClient;
 
   @Transactional
   public TransferResponse quote(
@@ -112,6 +115,18 @@ public class TransferService {
 
   @Transactional
   public TransferResponse confirm(CallerIdentity caller, UUID transferId) {
+    return confirmInternal(caller, transferId);
+  }
+
+  @Transactional
+  public TransferResponse confirm(CallerIdentity caller, UUID transferId, String totpCode) {
+    if (!totpClient.verify(caller.userId(), totpCode)) {
+      throw new OtpVerificationException("Invalid authenticator code");
+    }
+    return confirmInternal(caller, transferId);
+  }
+
+  private TransferResponse confirmInternal(CallerIdentity caller, UUID transferId) {
     Transfer transfer = transferRepository
       .findForUpdateByIdAndInitiatedByUserId(transferId, caller.userId())
       .orElseThrow(() -> new EntityNotFoundException("Transfer not found"));
@@ -147,11 +162,54 @@ public class TransferService {
     usage.setTotalAmount(projectedTotal);
     dailyUsageRepository.save(usage);
 
+    postToLedger(transfer);
+
     transfer.setStatus(TransferStatus.COMPLETED);
     transfer.setConfirmedAt(Instant.now());
     Transfer saved = transferRepository.save(transfer);
     eventPublisher.publishCompleted(saved);
     return TransferResponse.from(saved);
+  }
+
+  /**
+   * Moves the money in accounts-service, which owns the ledger. Both entries carry the transfer id
+   * as their reference, so a confirm that is retried after a timeout re-posts nothing.
+   */
+  private void postToLedger(Transfer transfer) {
+    String payeeName = payeeRepository
+      .findByOwnerUserIdAndAccountReferenceIgnoreCase(
+        transfer.getInitiatedByUserId(),
+        transfer.getToAccount()
+      )
+      .map(payee -> payee.getNickname())
+      .filter(nickname -> nickname != null && !nickname.isBlank())
+      .orElse("account " + transfer.getToAccount());
+
+    accountsClient.postDebit(
+      transfer.getFromAccountId(),
+      new LedgerEntry(
+        transfer.totalDebit(),
+        transfer.getCurrency(),
+        "TRANSFER-OUT-" + transfer.getId(),
+        "Transfer to " + payeeName,
+        "Transfer",
+        "TRANSFER",
+        "SecureBank Transfer"
+      )
+    );
+
+    accountsClient.postCreditByAccountNumber(
+      transfer.getToAccount(),
+      new LedgerEntry(
+        transfer.getAmount(),
+        transfer.getCurrency(),
+        "TRANSFER-IN-" + transfer.getId(),
+        "Transfer received",
+        "Transfer",
+        "TRANSFER",
+        "SecureBank Transfer"
+      )
+    );
   }
 
   @Transactional(readOnly = true)

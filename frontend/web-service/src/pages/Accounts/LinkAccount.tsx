@@ -10,6 +10,7 @@ const { Text, Title } = Typography;
 interface LinkAccountFormValues {
   accountNumber: string;
   nationalIdOrPassport: string;
+  nickname?: string;
 }
 
 const LinkAccount: React.FC = () => {
@@ -99,6 +100,15 @@ const LinkAccount: React.FC = () => {
               rules={[{ required: true, message: 'Enter the identity number held by the bank' }]}
             >
               <Input size="large" autoComplete="off" placeholder="Identity document number" />
+            </Form.Item>
+
+            <Form.Item
+              label="Account nickname (optional)"
+              name="nickname"
+              extra="Your own name for this account. Left empty, we keep the name the bank holds."
+              rules={[{ max: 120, message: 'Keep the nickname under 120 characters' }]}
+            >
+              <Input size="large" autoComplete="off" placeholder="e.g. Salary account" />
             </Form.Item>
 
             <Button

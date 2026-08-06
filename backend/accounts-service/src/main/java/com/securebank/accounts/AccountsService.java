@@ -4,7 +4,9 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -12,11 +14,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -24,10 +26,19 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * Accounts, cards and the transaction ledger (FR-09, FR-10, FR-30).
+ *
+ * <p>Every figure returned here is read from the database and scoped to the caller resolved from
+ * the gateway identity header. A customer who has just registered owns no accounts, so the API
+ * answers with an empty portfolio until they open or claim one - nothing is pre-populated.
+ */
 @Service
 public class AccountsService {
 
@@ -38,14 +49,17 @@ public class AccountsService {
   private static final DateTimeFormatter STATEMENT_SHORT_DATE = DateTimeFormatter.ofPattern(
     "MM/dd"
   );
+  private static final DateTimeFormatter ACTIVITY_DATE = DateTimeFormatter.ofPattern("dd MMM yyyy");
+  private static final DateTimeFormatter SHORT_ACTIVITY_DATE = DateTimeFormatter.ofPattern("MMM d");
   private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
-  private static final String DEMO_USER_ID = "8f7113d3-9f5b-4a7b-88fd-0a0b7854b1d1";
-  private static final String DEMO_FULL_NAME = "Kaveesha Kapitiarachchi";
-  private static final String DEMO_ADDRESS_LINE = "42 Lake Drive";
-  private static final String DEMO_ADDRESS_CITY = "Kandy, Sri Lanka";
   private static final int TOTP_MAX_ATTEMPTS = 5;
   /** Shown instead of a masked phone number now that codes come from the authenticator app. */
   private static final String TOTP_DELIVERY_TARGET = "Authenticator app";
+  /** Branch details of the digital banking branch every self-service account is opened at. */
+  private static final String BRANCH_IFSC = "SBLK0007";
+  private static final String BRANCH_NAME = "Digital Banking";
+  private static final String DEFAULT_CURRENCY = "LKR";
+  private static final String FALLBACK_HOLDER_NAME = "Account holder";
 
   /**
    * The bank's account product catalogue (FR-09). A customer can only open an
@@ -135,379 +149,86 @@ public class AccountsService {
     )
   );
 
+  /**
+   * Challenges staged for the current authenticator step. They live for five minutes and are
+   * deliberately not persisted - nothing here is customer data, only an in-flight confirmation.
+   */
   private final ConcurrentMap<UUID, PendingAccountChange> pendingChanges =
     new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, PendingAccountLink> pendingLinks = new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, PendingAccountOpening> pendingOpenings =
     new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, PendingCardLink> pendingCardLinks = new ConcurrentHashMap<>();
-  private final Set<String> linkedAccountIds = ConcurrentHashMap.newKeySet();
-  private final Set<String> linkedCardIds = ConcurrentHashMap.newKeySet();
-  private final ConcurrentMap<String, AccountState> accountsById = new ConcurrentHashMap<>();
-  private final ConcurrentMap<String, List<BankCardResponse>> cardsByAccountId =
-    new ConcurrentHashMap<>();
-  /** Product name per opened account, so the detail page and card can show it. */
-  private final ConcurrentMap<String, String> productNameByAccountId = new ConcurrentHashMap<>();
+
+  private final AccountRepository accountRepository;
+  private final AccountTransactionRepository transactionRepository;
+  private final BankCardRepository cardRepository;
   private final TotpClient totpClient;
-  private final AccountState primaryAccount = new AccountState(
-    "acc-demo-primary",
-    "Everyday Current",
-    "CURRENT",
-    "67",
-    new BigDecimal("48231.76"),
-    "LKR",
-    2.4,
-    "2m ago",
-    "1234 5678 90067",
-    "SBLK0007",
-    "14 Mar 2024",
-    "Kandy City",
-    "Individual account",
-    "Active - Verified",
-    false,
-    null
-  );
-  private final AccountState savingsAccount = new AccountState(
-    "acc-demo-savings",
-    "Goal Savings",
-    "SAVINGS",
-    "7890",
-    new BigDecimal("128900.00"),
-    "LKR",
-    1.1,
-    "1m ago",
-    "1234567890",
-    "SBLK0012",
-    "08 Sep 2022",
-    "Kandy City",
-    "Joint account",
-    "Active - Verified",
-    false,
-    null
-  );
-  private final Map<String, EligibleAccount> eligibleAccountsByNumber = Map.of(
-    "1234567890",
-    new EligibleAccount(savingsAccount, "200229602936")
-  );
+  private final UserProfileClient userProfileClient;
 
-  private static final List<TransactionResponse> RECENT_TRANSACTIONS = List.of(
-    new TransactionResponse(
-      "txn-demo-001",
-      "Ceylon Electricity Board",
-      "Utilities",
-      "Today",
-      new BigDecimal("-84.20"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-002",
-      "Salary Deposit",
-      "Income",
-      "Yesterday",
-      new BigDecimal("3200.00"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-003",
-      "Kumar's Grocers",
-      "Groceries",
-      "Jul 20",
-      new BigDecimal("-46.75"),
-      true
-    ),
-    new TransactionResponse(
-      "txn-demo-004",
-      "Transfer to A. Silva",
-      "Transfer",
-      "Jul 19",
-      new BigDecimal("-150.00"),
-      true
-    )
-  );
-
-  private static final List<AccountActivityResponse> ACCOUNT_ACTIVITY = List.of(
-    new AccountActivityResponse(
-      "txn-demo-001",
-      "Ceylon Electricity Board",
-      "Bill payment",
-      "BILL_PAYMENT",
-      "Kandy",
-      new BigDecimal("-84.20"),
-      "LKR",
-      Instant.parse("2026-08-01T03:42:00Z"),
-      "Today - 01 Aug 2026",
-      "J-94021",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-002",
-      "Salary Deposit",
-      "Income",
-      "INCOME",
-      "SecureBank Payroll",
-      new BigDecimal("3200.00"),
-      "LKR",
-      Instant.parse("2026-07-31T03:15:00Z"),
-      "Yesterday - 31 Jul 2026",
-      "J-94020",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-003",
-      "Kumar's Grocers",
-      "Card payment",
-      "CARD_PAYMENT",
-      "Kandy",
-      new BigDecimal("-46.75"),
-      "LKR",
-      Instant.parse("2026-07-20T12:50:00Z"),
-      "20 Jul 2026",
-      "J-93981",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-004",
-      "Transfer to A. Silva",
-      "Outgoing transfer",
-      "TRANSFER",
-      "SecureBank Transfer",
-      new BigDecimal("-150.00"),
-      "LKR",
-      Instant.parse("2026-07-19T08:40:00Z"),
-      "19 Jul 2026",
-      "J-93972",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-005",
-      "Highway Fuel Stop",
-      "Transport",
-      "TRANSPORT",
-      "Kadawatha",
-      new BigDecimal("-18.40"),
-      "LKR",
-      Instant.parse("2026-07-18T06:10:00Z"),
-      "18 Jul 2026",
-      "J-93958",
-      true
-    ),
-    new AccountActivityResponse(
-      "txn-demo-006",
-      "Mobile Reload",
-      "Bills",
-      "BILL_PAYMENT",
-      "Dialog",
-      new BigDecimal("-12.00"),
-      "LKR",
-      Instant.parse("2026-07-17T14:35:00Z"),
-      "17 Jul 2026",
-      "J-93940",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-007",
-      "Rent Collection",
-      "Income",
-      "INCOME",
-      "Standing order",
-      new BigDecimal("950.00"),
-      "LKR",
-      Instant.parse("2026-07-15T01:45:00Z"),
-      "15 Jul 2026",
-      "J-93901",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-008",
-      "Pharmacy Care",
-      "Health",
-      "HEALTH",
-      "Kandy",
-      new BigDecimal("-36.90"),
-      "LKR",
-      Instant.parse("2026-07-14T12:15:00Z"),
-      "14 Jul 2026",
-      "J-93890",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-009",
-      "Dialog Broadband",
-      "Internet",
-      "INTERNET",
-      "Online",
-      new BigDecimal("-42.50"),
-      "LKR",
-      Instant.parse("2026-07-13T04:52:00Z"),
-      "13 Jul 2026",
-      "J-93878",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-demo-010",
-      "Bookshop",
-      "Education",
-      "EDUCATION",
-      "Peradeniya",
-      new BigDecimal("-22.10"),
-      "LKR",
-      Instant.parse("2026-07-12T08:05:00Z"),
-      "12 Jul 2026",
-      "J-93860",
-      false
-    )
-  );
-
-  private static final List<AccountActivityResponse> SAVINGS_ACCOUNT_ACTIVITY = List.of(
-    new AccountActivityResponse(
-      "txn-savings-001",
-      "Monthly savings transfer",
-      "Transfer in",
-      "TRANSFER",
-      "Everyday Current",
-      new BigDecimal("15000.00"),
-      "LKR",
-      Instant.parse("2026-07-28T03:30:00Z"),
-      "28 Jul 2026",
-      "J-95021",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-savings-002",
-      "Savings interest",
-      "Interest",
-      "INCOME",
-      "SecureBank",
-      new BigDecimal("640.25"),
-      "LKR",
-      Instant.parse("2026-07-25T03:30:00Z"),
-      "25 Jul 2026",
-      "J-95008",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-savings-003",
-      "Emergency fund transfer",
-      "Transfer out",
-      "TRANSFER",
-      "Everyday Current",
-      new BigDecimal("-5000.00"),
-      "LKR",
-      Instant.parse("2026-07-12T05:10:00Z"),
-      "12 Jul 2026",
-      "J-94962",
-      false
-    ),
-    new AccountActivityResponse(
-      "txn-savings-004",
-      "Monthly savings transfer",
-      "Transfer in",
-      "TRANSFER",
-      "Everyday Current",
-      new BigDecimal("15000.00"),
-      "LKR",
-      Instant.parse("2026-06-28T03:30:00Z"),
-      "28 Jun 2026",
-      "J-94874",
-      false
-    )
-  );
-
-  public AccountsService(TotpClient totpClient) {
+  public AccountsService(
+    AccountRepository accountRepository,
+    AccountTransactionRepository transactionRepository,
+    BankCardRepository cardRepository,
+    TotpClient totpClient,
+    UserProfileClient userProfileClient
+  ) {
+    this.accountRepository = accountRepository;
+    this.transactionRepository = transactionRepository;
+    this.cardRepository = cardRepository;
     this.totpClient = totpClient;
-    accountsById.put(primaryAccount.id(), primaryAccount);
-    accountsById.put(savingsAccount.id(), savingsAccount);
-    linkedAccountIds.add(primaryAccount.id());
-    cardsByAccountId.put(
-      primaryAccount.id(),
-      new ArrayList<>(
-        List.of(
-          new BankCardResponse(
-            "card-debit-primary",
-            primaryAccount.id(),
-            "DEBIT",
-            "Everyday Debit",
-            "4910 12** **** 0067",
-            DEMO_FULL_NAME.toUpperCase(),
-            "01/29",
-            "VISA",
-            "Active",
-            false
-          )
-        )
-      )
-    );
-    cardsByAccountId.put(
-      savingsAccount.id(),
-      new ArrayList<>(
-        List.of(
-          new BankCardResponse(
-            "card-debit-joint",
-            savingsAccount.id(),
-            "DEBIT",
-            "Shared Savings Debit",
-            "4910 12** **** 7890",
-            "KAVEESHA K. / JOINT",
-            "06/30",
-            "VISA",
-            "Active",
-            true
-          )
-        )
-      )
-    );
+    this.userProfileClient = userProfileClient;
   }
 
-  public AccountResponse getPrimaryAccount() {
-    return getPrimaryAccount(null);
-  }
+  // --------------------------------------------------------------------
+  // Reads
+  // --------------------------------------------------------------------
 
+  /**
+   * The account the dashboard opens on: the caller's oldest account. A customer who has not opened
+   * or linked one yet has no primary account, which is a 404 rather than an invented one.
+   */
+  @Transactional(readOnly = true)
   public AccountResponse getPrimaryAccount(String callerUserId) {
-    return toAccountResponse(primaryAccount);
+    AccountEntity account = accountRepository
+      .findFirstByUserIdOrderByCreatedAtAsc(requireCaller(callerUserId))
+      .orElseThrow(() ->
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "You do not have an account yet")
+      );
+    return toAccountResponse(account);
   }
 
-  public List<AccountResponse> getLinkedAccounts() {
-    return getLinkedAccounts(null);
-  }
-
+  @Transactional(readOnly = true)
   public List<AccountResponse> getLinkedAccounts(String callerUserId) {
-    return accountsById
-      .values()
+    return accountRepository
+      .findByUserIdOrderByCreatedAtAsc(requireCaller(callerUserId))
       .stream()
-      .filter(account -> linkedAccountIds.contains(account.id()))
-      .sorted(Comparator.comparing(account -> account.id().equals(primaryAccount.id()) ? 0 : 1))
       .map(this::toAccountResponse)
       .toList();
   }
 
-  public List<TransactionResponse> getRecentTransactions(int limit) {
-    return getRecentTransactions(primaryAccount.id(), limit);
+  /** Recent activity on the dashboard's primary account; empty while the caller has no account. */
+  @Transactional(readOnly = true)
+  public List<TransactionResponse> getPrimaryAccountTransactions(String callerUserId, int limit) {
+    Optional<AccountEntity> account = accountRepository.findFirstByUserIdOrderByCreatedAtAsc(
+      requireCaller(callerUserId)
+    );
+    return account.map(entity -> recentTransactions(entity, limit)).orElseGet(List::of);
   }
 
-  public List<TransactionResponse> getRecentTransactions(String id, int limit) {
-    AccountState account = requireLinkedAccount(id);
-    List<TransactionResponse> transactions = account.id().equals(primaryAccount.id())
-      ? RECENT_TRANSACTIONS
-      : accountActivity(account.id())
-          .stream()
-          .sorted(Comparator.comparing(AccountActivityResponse::timestamp).reversed())
-          .map(transaction ->
-            new TransactionResponse(
-              transaction.id(),
-              transaction.merchant(),
-              transaction.category(),
-              transaction.dateGroupLabel(),
-              transaction.amount(),
-              !transaction.flagged()
-            )
-          )
-          .toList();
-    int safeLimit = Math.min(Math.max(limit, 1), transactions.size());
-    return transactions.subList(0, safeLimit);
+  @Transactional(readOnly = true)
+  public List<TransactionResponse> getRecentTransactions(
+    String callerUserId,
+    String accountId,
+    int limit
+  ) {
+    return recentTransactions(requireOwnedAccount(callerUserId, accountId), limit);
   }
 
+  @Transactional(readOnly = true)
   public List<AccountActivityResponse> getTransactionHistory(
-    String id,
+    String callerUserId,
+    String accountId,
     TransactionDirection direction,
     LocalDate dateFrom,
     LocalDate dateTo,
@@ -516,47 +237,77 @@ public class AccountsService {
     String type,
     boolean flaggedOnly
   ) {
-    requireLinkedAccount(id);
+    AccountEntity account = requireOwnedAccount(callerUserId, accountId);
     String normalizedType = normalizeType(type);
 
-    return accountActivity(id)
+    return transactionRepository
+      .findByAccountIdOrderByOccurredAtDesc(account.getId())
       .stream()
       .filter(transaction -> matchesDirection(transaction, direction))
       .filter(transaction -> matchesDateRange(transaction, dateFrom, dateTo))
       .filter(transaction -> matchesAmountRange(transaction, minAmount, maxAmount))
       .filter(transaction -> matchesType(transaction, normalizedType))
-      .filter(transaction -> !flaggedOnly || transaction.flagged())
-      .sorted(Comparator.comparing(AccountActivityResponse::timestamp).reversed())
+      .filter(transaction -> !flaggedOnly || transaction.isFlagged())
+      .map(this::toActivityResponse)
       .toList();
   }
 
-  public AccountDetailResponse getAccountById(String id) {
-    return toAccountDetailResponse(requireLinkedAccount(id));
+  @Transactional(readOnly = true)
+  public AccountDetailResponse getAccountById(String callerUserId, String accountId) {
+    return toAccountDetailResponse(requireOwnedAccount(callerUserId, accountId));
   }
 
+  /** The products a customer may open, optionally narrowed to one account type. */
+  public List<AccountProductResponse> getAccountProducts(String accountType) {
+    if (accountType == null || accountType.isBlank() || "ALL".equalsIgnoreCase(accountType)) {
+      return ACCOUNT_PRODUCTS;
+    }
+    String requested = accountType.trim().toUpperCase();
+    return ACCOUNT_PRODUCTS.stream()
+      .filter(product -> product.accountType().equals(requested))
+      .toList();
+  }
+
+  // --------------------------------------------------------------------
+  // Freeze / unfreeze (FR-10)
+  // --------------------------------------------------------------------
+
+  @Transactional(readOnly = true)
   public OtpChallengeResponse requestFreeze(
-    String id,
+    String accountId,
     FreezeAccountRequest request,
     String callerUserId
   ) {
-    AccountState account = requireLinkedAccount(id);
-    if (account.frozen()) {
+    AccountEntity account = requireOwnedAccount(callerUserId, accountId);
+    if (account.isFrozen()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already frozen");
     }
-    return createChange("FREEZE_ACCOUNT", id, request.reason(), resolveCaller(callerUserId));
+    return createChange(
+      "FREEZE_ACCOUNT",
+      account.getId(),
+      request.reason(),
+      requireCaller(callerUserId)
+    );
   }
 
-  public OtpChallengeResponse requestUnfreeze(String id, String callerUserId) {
-    AccountState account = requireLinkedAccount(id);
-    if (!account.frozen()) {
+  @Transactional(readOnly = true)
+  public OtpChallengeResponse requestUnfreeze(String accountId, String callerUserId) {
+    AccountEntity account = requireOwnedAccount(callerUserId, accountId);
+    if (!account.isFrozen()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is not frozen");
     }
-    return createChange("UNFREEZE_ACCOUNT", id, null, resolveCaller(callerUserId));
+    return createChange("UNFREEZE_ACCOUNT", account.getId(), null, requireCaller(callerUserId));
   }
 
-  public AccountDetailResponse confirmChange(UUID changeRequestId, ConfirmChangeRequest request) {
+  @Transactional
+  public AccountDetailResponse confirmChange(
+    String callerUserId,
+    UUID changeRequestId,
+    ConfirmChangeRequest request
+  ) {
+    UUID caller = requireCaller(callerUserId);
     PendingAccountChange change = pendingChanges.get(changeRequestId);
-    if (change == null) {
+    if (change == null || !change.userId().equals(caller)) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Change request not found");
     }
     if (change.expiresAt().isBefore(Instant.now())) {
@@ -574,62 +325,69 @@ public class AccountsService {
       throwTotpError(change.failedAttempts());
     }
 
-    AccountState account = requireLinkedAccount(change.accountId());
+    AccountEntity account = requireOwnedAccount(callerUserId, change.accountId());
     if ("FREEZE_ACCOUNT".equals(change.type())) {
       account.freeze(change.reason());
     } else if ("UNFREEZE_ACCOUNT".equals(change.type())) {
       account.unfreeze();
     }
     pendingChanges.remove(changeRequestId);
-    return toAccountDetailResponse(account);
+    return toAccountDetailResponse(accountRepository.save(account));
   }
 
-  public byte[] downloadStatement(String id) {
-    AccountState account = requireLinkedAccount(id);
-    return buildStatementPdf(account, buildStatementSnapshot(account, accountActivity(id)));
-  }
+  // --------------------------------------------------------------------
+  // Linking an existing account (FR-09)
+  // --------------------------------------------------------------------
 
+  @Transactional(readOnly = true)
   public OtpChallengeResponse requestAccountLink(LinkAccountRequest request, String callerUserId) {
+    UUID caller = requireCaller(callerUserId);
     String accountNumber = normalizeIdentifier(request.accountNumber());
-    EligibleAccount eligibleAccount = eligibleAccountsByNumber.get(accountNumber);
-    if (
-      eligibleAccount == null ||
-      !eligibleAccount
-        .nationalIdOrPassport()
-        .equalsIgnoreCase(normalizeIdentifier(request.nationalIdOrPassport()))
-    ) {
-      throw new ResponseStatusException(
-        HttpStatus.NOT_FOUND,
-        "We could not match those details to an account owned by you"
+    AccountEntity account = accountRepository
+      .findByAccountNumberAndUserIdIsNull(accountNumber)
+      .filter(
+        candidate ->
+          candidate.getHolderNationalId() != null &&
+          candidate
+            .getHolderNationalId()
+            .equalsIgnoreCase(normalizeIdentifier(request.nationalIdOrPassport()))
+      )
+      .orElseThrow(() ->
+        new ResponseStatusException(
+          HttpStatus.NOT_FOUND,
+          "We could not match those details to an account owned by you"
+        )
       );
-    }
-    if (linkedAccountIds.contains(eligibleAccount.account().id())) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "This account is already linked");
-    }
 
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
     pendingLinks.put(
       changeRequestId,
-      new PendingAccountLink(eligibleAccount.account().id(), resolveCaller(callerUserId), expiresAt)
+      new PendingAccountLink(
+        account.getId(),
+        caller,
+        nicknameOrDefault(request.nickname(), account.getNickname()),
+        expiresAt
+      )
     );
 
-    return new OtpChallengeResponse(
+    return challenge(
       changeRequestId,
       "LINK_ACCOUNT",
-      TOTP_DELIVERY_TARGET,
       expiresAt,
-      "Enter the current six digit code from your authenticator app to link this account.",
-      null
+      "Enter the current six digit code from your authenticator app to link this account."
     );
   }
 
+  @Transactional
   public LinkedAccountResponse confirmAccountLink(
+    String callerUserId,
     UUID changeRequestId,
     ConfirmChangeRequest request
   ) {
+    UUID caller = requireCaller(callerUserId);
     PendingAccountLink link = pendingLinks.get(changeRequestId);
-    if (link == null) {
+    if (link == null || !link.userId().equals(caller)) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account link request not found");
     }
     if (link.expiresAt().isBefore(Instant.now())) {
@@ -646,23 +404,32 @@ public class AccountsService {
       link.incrementAttempts();
       throwTotpError(link.failedAttempts());
     }
-    linkedAccountIds.add(link.accountId());
-    pendingLinks.remove(changeRequestId);
-    AccountResponse account = toAccountResponse(accountsById.get(link.accountId()));
-    return new LinkedAccountResponse(account, "Account linked successfully");
-  }
 
-  /** The products a customer may open, optionally narrowed to one account type. */
-  public List<AccountProductResponse> getAccountProducts(String accountType) {
-    if (accountType == null || accountType.isBlank() || "ALL".equalsIgnoreCase(accountType)) {
-      return ACCOUNT_PRODUCTS;
+    AccountEntity account = accountRepository
+      .findById(link.accountId())
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+    if (account.getUserId() != null) {
+      pendingLinks.remove(changeRequestId);
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "This account is already linked");
     }
-    String requested = accountType.trim().toUpperCase();
-    return ACCOUNT_PRODUCTS.stream()
-      .filter(product -> product.accountType().equals(requested))
-      .toList();
+    account.setUserId(caller);
+    // The customer names the account as they add it; the bank's own label is the fallback.
+    account.setNickname(nicknameOrDefault(link.nickname(), account.getNickname()));
+    AccountEntity saved = accountRepository.save(account);
+    // Cards already issued against the account move across with it.
+    cardRepository.findByAccountIdOrderByCreatedAtAsc(saved.getId()).forEach(card -> {
+      card.setUserId(caller);
+      cardRepository.save(card);
+    });
+    pendingLinks.remove(changeRequestId);
+    return new LinkedAccountResponse(toAccountResponse(saved), "Account linked successfully");
   }
 
+  // --------------------------------------------------------------------
+  // Opening a new account (FR-09)
+  // --------------------------------------------------------------------
+
+  @Transactional(readOnly = true)
   public OtpChallengeResponse requestAccountOpening(
     OpenAccountRequest request,
     String callerUserId
@@ -674,7 +441,7 @@ public class AccountsService {
     UUID changeRequestId = UUID.randomUUID();
     pendingOpenings.put(
       changeRequestId,
-      new PendingAccountOpening(request, resolveCaller(callerUserId), expiresAt)
+      new PendingAccountOpening(request, requireCaller(callerUserId), expiresAt)
     );
     return challenge(
       changeRequestId,
@@ -684,76 +451,102 @@ public class AccountsService {
     );
   }
 
+  @Transactional
   public LinkedAccountResponse confirmAccountOpening(
+    String callerUserId,
+    String authorizationHeader,
     UUID changeRequestId,
     ConfirmChangeRequest request
   ) {
+    UUID caller = requireCaller(callerUserId);
     PendingAccountOpening opening = pendingOpenings.get(changeRequestId);
-    if (opening == null) {
+    if (opening == null || !opening.userId().equals(caller)) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account opening request not found");
     }
-    validateOpeningTotp(changeRequestId, opening, request.otpCode());
+    if (opening.expiresAt().isBefore(Instant.now())) {
+      pendingOpenings.remove(changeRequestId);
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
+    }
+    if (!totpClient.verify(opening.userId(), request.otpCode())) {
+      opening.incrementAttempts();
+      throwTotpError(opening.failedAttempts());
+    }
 
     AccountProductResponse product = requireProduct(
       opening.request().productCode(),
       opening.request().accountType()
     );
-    String accountId = "acc-" + UUID.randomUUID().toString().substring(0, 8);
+    UserProfileClient.UserProfileSnapshot profile = userProfileClient
+      .getProfile(authorizationHeader, callerUserId)
+      .orElse(null);
+
+    Instant now = Instant.now();
     String accountNumber = generateAccountNumber();
-    AccountState account = new AccountState(
-      accountId,
-      product.name(),
-      opening.request().accountType(),
-      accountNumber.substring(accountNumber.length() - 4),
-      BigDecimal.ZERO,
-      "LKR",
-      0,
-      "Just now",
-      accountNumber,
-      "SBLK0007",
-      "01 Aug 2026",
-      "Digital Banking",
-      "JOINT".equals(opening.request().ownershipType()) ? "Joint account" : "Individual account",
-      "Active - Verified",
-      false,
-      null
-    );
-    accountsById.put(accountId, account);
-    linkedAccountIds.add(accountId);
-    productNameByAccountId.put(accountId, product.name());
-    cardsByAccountId.put(
-      accountId,
-      new ArrayList<>(List.of(createDebitCard(account, product.name())))
-    );
+    AccountEntity account = AccountEntity.builder()
+      .id("acc-" + UUID.randomUUID().toString().substring(0, 8))
+      .userId(caller)
+      .holderName(profile == null ? null : profile.fullName())
+      .holderAddressLine(profile == null ? null : profile.addressLine())
+      .holderCity(profile == null ? null : profile.city())
+      // The customer's own label wins; the product name is only the fallback.
+      .nickname(nicknameOrDefault(opening.request().nickname(), product.name()))
+      .accountType(opening.request().accountType())
+      .productCode(product.code())
+      .productName(product.name())
+      .accountNumber(accountNumber)
+      .balance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+      .currency(product.currency())
+      .ifscCode(BRANCH_IFSC)
+      .openedOn(LocalDate.now(COLOMBO))
+      .homeBranch(BRANCH_NAME)
+      .ownershipLabel(
+        "JOINT".equals(opening.request().ownershipType()) ? "Joint account" : "Individual account"
+      )
+      .status("Active - Verified")
+      .frozen(false)
+      .createdAt(now)
+      .updatedAt(now)
+      .build();
+    AccountEntity saved = accountRepository.save(account);
+    cardRepository.save(buildDebitCard(saved, product.name(), now));
+
     pendingOpenings.remove(changeRequestId);
-    return new LinkedAccountResponse(toAccountResponse(account), "New account opened successfully");
+    return new LinkedAccountResponse(toAccountResponse(saved), "New account opened successfully");
   }
 
+  // --------------------------------------------------------------------
+  // Linking a credit card the bank already issued (FR-09)
+  // --------------------------------------------------------------------
+
+  @Transactional(readOnly = true)
   public OtpChallengeResponse requestCreditCardLink(
     LinkCreditCardRequest request,
     String callerUserId
   ) {
-    AccountState account = requireLinkedAccount(request.accountId());
-    String cardNumber = normalizeIdentifier(request.cardNumber());
-    boolean matchesBankRecord =
-      "4485123412345678".equals(cardNumber) &&
-      "11/29".equals(request.expiryDate()) &&
-      "200229602936".equals(normalizeIdentifier(request.nationalIdOrPassport()));
-    if (!matchesBankRecord) {
-      throw new ResponseStatusException(
-        HttpStatus.NOT_FOUND,
-        "We could not match those card details to a credit card owned by you"
+    UUID caller = requireCaller(callerUserId);
+    AccountEntity account = requireOwnedAccount(callerUserId, request.accountId());
+    BankCardEntity card = cardRepository
+      .findByCardNumberAndUserIdIsNull(normalizeIdentifier(request.cardNumber()))
+      .filter(candidate -> candidate.getExpiryDate().equals(request.expiryDate()))
+      .filter(
+        candidate ->
+          candidate.getHolderNationalId() != null &&
+          candidate
+            .getHolderNationalId()
+            .equalsIgnoreCase(normalizeIdentifier(request.nationalIdOrPassport()))
+      )
+      .orElseThrow(() ->
+        new ResponseStatusException(
+          HttpStatus.NOT_FOUND,
+          "We could not match those card details to a credit card owned by you"
+        )
       );
-    }
-    if (linkedCardIds.contains("card-credit-demo")) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "This credit card is already linked");
-    }
 
     Instant expiresAt = Instant.now().plusSeconds(300);
     UUID changeRequestId = UUID.randomUUID();
     pendingCardLinks.put(
       changeRequestId,
-      new PendingCardLink(account.id(), resolveCaller(callerUserId), expiresAt)
+      new PendingCardLink(account.getId(), card.getId(), caller, expiresAt)
     );
     return challenge(
       changeRequestId,
@@ -763,32 +556,322 @@ public class AccountsService {
     );
   }
 
+  @Transactional
   public LinkedCardResponse confirmCreditCardLink(
+    String callerUserId,
     UUID changeRequestId,
     ConfirmChangeRequest request
   ) {
+    UUID caller = requireCaller(callerUserId);
     PendingCardLink link = pendingCardLinks.get(changeRequestId);
-    if (link == null) {
+    if (link == null || !link.userId().equals(caller)) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit card link request not found");
     }
-    validateCardTotp(changeRequestId, link, request.otpCode());
-    AccountState account = requireLinkedAccount(link.accountId());
-    BankCardResponse card = new BankCardResponse(
-      "card-credit-demo",
-      account.id(),
-      "CREDIT",
-      "SecureBank Platinum",
-      "4485 **** **** 5678",
-      DEMO_FULL_NAME.toUpperCase(),
-      "11/29",
-      "VISA",
-      "Active",
-      false
-    );
-    cardsByAccountId.computeIfAbsent(account.id(), ignored -> new ArrayList<>()).add(card);
-    linkedCardIds.add(card.id());
+    if (link.expiresAt().isBefore(Instant.now())) {
+      pendingCardLinks.remove(changeRequestId);
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
+    }
+    if (!totpClient.verify(link.userId(), request.otpCode())) {
+      link.incrementAttempts();
+      throwTotpError(link.failedAttempts());
+    }
+
+    AccountEntity account = requireOwnedAccount(callerUserId, link.accountId());
+    BankCardEntity card = cardRepository
+      .findById(link.cardId())
+      .orElseThrow(() ->
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit card not found")
+      );
+    if (card.getUserId() != null) {
+      pendingCardLinks.remove(changeRequestId);
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "This credit card is already linked");
+    }
+    card.setUserId(caller);
+    card.setAccountId(account.getId());
+    BankCardEntity saved = cardRepository.save(card);
     pendingCardLinks.remove(changeRequestId);
-    return new LinkedCardResponse(card, "Credit card linked successfully");
+    return new LinkedCardResponse(toCardResponse(saved), "Credit card linked successfully");
+  }
+
+  // --------------------------------------------------------------------
+  // Ledger (service to service)
+  // --------------------------------------------------------------------
+
+  /**
+   * The bank-wide transaction journal (FR-30) behind the admin audit view, newest first. It is
+   * read straight off the ledger, so it only ever shows movements that really happened.
+   */
+  @Transactional(readOnly = true)
+  public List<JournalEntryResponse> getJournal(int limit) {
+    int safeLimit = Math.min(Math.max(limit, 1), 500);
+    return transactionRepository
+      .findAllByOrderByOccurredAtDesc(PageRequest.of(0, safeLimit))
+      .stream()
+      .map(transaction ->
+        new JournalEntryResponse(
+          transaction.getId(),
+          transaction.getAccountId(),
+          transaction.getMerchant(),
+          transaction.getCategory(),
+          transaction.getTransactionType(),
+          transaction.getLocation(),
+          transaction.getAmount(),
+          transaction.getCurrency(),
+          transaction.getOccurredAt(),
+          transaction.getJournalId(),
+          transaction.isFlagged()
+        )
+      )
+      .toList();
+  }
+
+  /** Balance lookup for another core service; ownership is the caller's responsibility. */
+  @Transactional(readOnly = true)
+  public AccountSnapshotResponse getAccountSnapshot(String accountId) {
+    AccountEntity account = accountRepository
+      .findById(accountId)
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+    return new AccountSnapshotResponse(
+      account.getId(),
+      account.getAccountNumber(),
+      account.getBalance(),
+      account.getCurrency(),
+      account.isFrozen()
+    );
+  }
+
+  /** Takes money off an account and appends the movement to its ledger. */
+  @Transactional
+  public LedgerEntryResponse debit(String accountId, LedgerEntryRequest request) {
+    return postMovement(accountId, request, request.amount().negate());
+  }
+
+  /** Puts money onto an account and appends the movement to its ledger. */
+  @Transactional
+  public LedgerEntryResponse credit(String accountId, LedgerEntryRequest request) {
+    return postMovement(accountId, request, request.amount());
+  }
+
+  /**
+   * Debits a customer's primary account. Used where the paying service names the customer rather
+   * than an account, such as a vendor or QR payment.
+   */
+  @Transactional
+  public LedgerEntryResponse debitPrimaryAccount(String userId, LedgerEntryRequest request) {
+    AccountEntity account = accountRepository
+      .findFirstByUserIdOrderByCreatedAtAsc(requireCaller(userId))
+      .orElseThrow(() ->
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "This customer has no account")
+      );
+    return postMovement(account.getId(), request, request.amount().negate());
+  }
+
+  @Transactional
+  public LedgerEntryResponse debitOwnedAccount(
+    String userId,
+    String accountId,
+    LedgerEntryRequest request
+  ) {
+    UUID ownerId = requireCaller(userId);
+    accountRepository
+      .findByIdAndUserId(accountId, ownerId)
+      .orElseThrow(() ->
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found for this customer")
+      );
+    return postMovement(accountId, request, request.amount().negate());
+  }
+
+  @Transactional
+  public RefundLedgerResponse refund(RefundLedgerRequest request) {
+    UUID customerUserId = requireCaller(request.customerUserId());
+    AccountEntity customer = accountRepository
+      .findFirstByUserIdOrderByCreatedAtAsc(customerUserId)
+      .orElseThrow(() ->
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "The customer has no account")
+      );
+    if (request.merchantAccountId().equals(customer.getId())) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Refund accounts must be different");
+    }
+
+    LedgerEntryResponse merchantEntry = debit(
+      request.merchantAccountId(),
+      new LedgerEntryRequest(
+        request.amount(),
+        request.currency(),
+        request.reference() + ":merchant",
+        request.merchant(),
+        "Refunds",
+        "REFUND_DEBIT",
+        "SecureBank"
+      )
+    );
+    LedgerEntryResponse customerEntry = credit(
+      customer.getId(),
+      new LedgerEntryRequest(
+        request.amount(),
+        request.currency(),
+        request.reference() + ":customer",
+        request.merchant(),
+        "Refunds",
+        "REFUND_CREDIT",
+        "SecureBank"
+      )
+    );
+    return new RefundLedgerResponse(
+      request.merchantAccountId(),
+      merchantEntry.newBalance(),
+      customer.getId(),
+      customerEntry.newBalance()
+    );
+  }
+
+  /**
+   * Credits the SecureBank account holding this account number. Used for an in-bank transfer,
+   * where the sending service only knows the beneficiary's account number.
+   */
+  @Transactional
+  public LedgerEntryResponse creditByAccountNumber(
+    String accountNumber,
+    LedgerEntryRequest request
+  ) {
+    AccountEntity account = accountRepository
+      .findByAccountNumber(normalizeIdentifier(accountNumber))
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+    return postMovement(account.getId(), request, request.amount());
+  }
+
+  private LedgerEntryResponse postMovement(
+    String accountId,
+    LedgerEntryRequest request,
+    BigDecimal signedAmount
+  ) {
+    AccountEntity account = accountRepository
+      .findByIdForUpdate(accountId)
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+
+    // A replayed call must not move money a second time.
+    if (request.reference() != null && !request.reference().isBlank()) {
+      Optional<AccountTransactionEntity> existing =
+        transactionRepository.findByAccountIdAndReference(accountId, request.reference());
+      if (existing.isPresent()) {
+        AccountTransactionEntity posted = existing.get();
+        return new LedgerEntryResponse(
+          accountId,
+          posted.getId(),
+          posted.getJournalId(),
+          account.getBalance()
+        );
+      }
+    }
+
+    if (account.isFrozen()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is frozen");
+    }
+    if (
+      request.currency() != null &&
+      !request.currency().isBlank() &&
+      !account.getCurrency().equalsIgnoreCase(request.currency())
+    ) {
+      throw new ResponseStatusException(
+        HttpStatus.CONFLICT,
+        "Transaction currency must match the account currency " + account.getCurrency()
+      );
+    }
+    BigDecimal newBalance = account.getBalance().add(signedAmount);
+    if (newBalance.signum() < 0) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient funds");
+    }
+
+    Instant now = Instant.now();
+    AccountTransactionEntity transaction = AccountTransactionEntity.builder()
+      .id("txn-" + UUID.randomUUID())
+      .accountId(accountId)
+      .merchant(blankTo(request.merchant(), signedAmount.signum() < 0 ? "Payment" : "Deposit"))
+      .category(blankTo(request.category(), signedAmount.signum() < 0 ? "Payments" : "Income"))
+      .transactionType(
+        blankTo(request.transactionType(), signedAmount.signum() < 0 ? "PAYMENT" : "INCOME")
+      )
+      .location(request.location())
+      .amount(signedAmount.setScale(2, RoundingMode.HALF_UP))
+      .currency(blankTo(request.currency(), account.getCurrency()))
+      .balanceAfter(newBalance)
+      .occurredAt(now)
+      .journalId(nextJournalId())
+      .flagged(false)
+      .reference(
+        request.reference() == null || request.reference().isBlank() ? null : request.reference()
+      )
+      .createdAt(now)
+      .build();
+    transactionRepository.save(transaction);
+
+    account.setBalance(newBalance);
+    account.setUpdatedAt(now);
+    accountRepository.save(account);
+
+    return new LedgerEntryResponse(
+      accountId,
+      transaction.getId(),
+      transaction.getJournalId(),
+      newBalance
+    );
+  }
+
+  // --------------------------------------------------------------------
+  // Statement (FR-11)
+  // --------------------------------------------------------------------
+
+  @Transactional(readOnly = true)
+  public byte[] downloadStatement(String callerUserId, String accountId) {
+    AccountEntity account = requireOwnedAccount(callerUserId, accountId);
+    List<AccountTransactionEntity> activity =
+      transactionRepository.findByAccountIdOrderByOccurredAtDesc(account.getId());
+    return buildStatementPdf(account, buildStatementSnapshot(account, activity));
+  }
+
+  // --------------------------------------------------------------------
+  // Internals
+  // --------------------------------------------------------------------
+
+  /**
+   * The caller the gateway authenticated. There is no fallback identity: without a verified user
+   * the service has no idea whose money is being asked about, so the request is rejected.
+   */
+  private UUID requireCaller(String callerUserId) {
+    if (callerUserId == null || callerUserId.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing caller identity");
+    }
+    try {
+      return UUID.fromString(callerUserId.trim());
+    } catch (IllegalArgumentException exception) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid caller identity");
+    }
+  }
+
+  /** An account only exists as far as the API is concerned if the caller owns it. */
+  private AccountEntity requireOwnedAccount(String callerUserId, String accountId) {
+    return accountRepository
+      .findByIdAndUserId(accountId, requireCaller(callerUserId))
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+  }
+
+  private List<TransactionResponse> recentTransactions(AccountEntity account, int limit) {
+    int safeLimit = Math.max(limit, 1);
+    return transactionRepository
+      .findByAccountIdOrderByOccurredAtDesc(account.getId())
+      .stream()
+      .limit(safeLimit)
+      .map(transaction ->
+        new TransactionResponse(
+          transaction.getId(),
+          transaction.getMerchant(),
+          transaction.getCategory(),
+          shortDateLabel(transaction.getOccurredAt()),
+          transaction.getAmount(),
+          !transaction.isFlagged()
+        )
+      )
+      .toList();
   }
 
   /**
@@ -817,41 +900,25 @@ public class AccountsService {
     return new OtpChallengeResponse(id, type, TOTP_DELIVERY_TARGET, expiresAt, message, null);
   }
 
-  /**
-   * The user whose authenticator app must produce the code. The gateway sets {@code X-User-Id} from
-   * the access token; the demo identity is only used when the service is called without a gateway.
-   */
-  private UUID resolveCaller(String callerUserId) {
-    if (callerUserId == null || callerUserId.isBlank()) {
-      return UUID.fromString(DEMO_USER_ID);
-    }
-    try {
-      return UUID.fromString(callerUserId.trim());
-    } catch (IllegalArgumentException exception) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid caller identity");
-    }
-  }
+  private OtpChallengeResponse createChange(
+    String type,
+    String accountId,
+    String reason,
+    UUID callerUserId
+  ) {
+    Instant expiresAt = Instant.now().plusSeconds(300);
+    UUID changeRequestId = UUID.randomUUID();
+    pendingChanges.put(
+      changeRequestId,
+      new PendingAccountChange(accountId, type, reason, callerUserId, expiresAt)
+    );
 
-  private void validateOpeningTotp(UUID id, PendingAccountOpening opening, String totpCode) {
-    if (opening.expiresAt().isBefore(Instant.now())) {
-      pendingOpenings.remove(id);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
-    }
-    if (!totpClient.verify(opening.userId(), totpCode)) {
-      opening.incrementAttempts();
-      throwTotpError(opening.failedAttempts());
-    }
-  }
-
-  private void validateCardTotp(UUID id, PendingCardLink link, String totpCode) {
-    if (link.expiresAt().isBefore(Instant.now())) {
-      pendingCardLinks.remove(id);
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification request expired");
-    }
-    if (!totpClient.verify(link.userId(), totpCode)) {
-      link.incrementAttempts();
-      throwTotpError(link.failedAttempts());
-    }
+    return challenge(
+      changeRequestId,
+      type,
+      expiresAt,
+      "Enter the current six digit code from your authenticator app to confirm this change."
+    );
   }
 
   private void throwTotpError(int failedAttempts) {
@@ -870,90 +937,90 @@ public class AccountsService {
   }
 
   private String generateAccountNumber() {
-    long random = java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 10_000_000_000L);
-    return "88" + String.format("%010d", random);
+    for (int attempt = 0; attempt < 10; attempt++) {
+      String candidate =
+        "88" + String.format("%010d", ThreadLocalRandom.current().nextLong(0, 10_000_000_000L));
+      if (!accountRepository.existsByAccountNumber(candidate)) {
+        return candidate;
+      }
+    }
+    throw new ResponseStatusException(
+      HttpStatus.SERVICE_UNAVAILABLE,
+      "Could not allocate an account number, please try again"
+    );
   }
 
-  private BankCardResponse createDebitCard(AccountState account, String productName) {
+  private String nextJournalId() {
+    return "J-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+  }
+
+  private BankCardEntity buildDebitCard(AccountEntity account, String productName, Instant now) {
     String suffix = account.lastFourDigits();
-    return new BankCardResponse(
-      "card-debit-" + account.id(),
-      account.id(),
-      "DEBIT",
-      productName + " Debit",
-      "4910 12** **** " + suffix,
-      DEMO_FULL_NAME.toUpperCase(),
-      "08/31",
-      "VISA",
-      "Active",
-      "Joint account".equals(account.ownershipLabel())
-    );
+    String cardNumber =
+      "491012" + String.format("%06d", ThreadLocalRandom.current().nextInt(0, 1_000_000)) + suffix;
+    return BankCardEntity.builder()
+      .id("card-debit-" + account.getId())
+      .accountId(account.getId())
+      .userId(account.getUserId())
+      .cardType("DEBIT")
+      .productName(productName + " Debit")
+      .cardNumber(cardNumber)
+      .maskedNumber("4910 12** **** " + suffix)
+      .cardholderName(cardholderName(account))
+      .expiryDate(LocalDate.now(COLOMBO).plusYears(5).format(DateTimeFormatter.ofPattern("MM/yy")))
+      .holderNationalId(account.getHolderNationalId())
+      .scheme("VISA")
+      .status("Active")
+      .jointAccountCard("Joint account".equals(account.getOwnershipLabel()))
+      .createdAt(now)
+      .updatedAt(now)
+      .build();
   }
 
-  private OtpChallengeResponse createChange(
-    String type,
-    String accountId,
-    String reason,
-    UUID callerUserId
-  ) {
-    Instant expiresAt = Instant.now().plusSeconds(300);
-    UUID changeRequestId = UUID.randomUUID();
-    pendingChanges.put(
-      changeRequestId,
-      new PendingAccountChange(changeRequestId, accountId, type, reason, callerUserId, expiresAt)
-    );
-
-    return challenge(
-      changeRequestId,
-      type,
-      expiresAt,
-      "Enter the current six digit code from your authenticator app to confirm this change."
-    );
+  private String cardholderName(AccountEntity account) {
+    String holder = account.getHolderName();
+    return holder == null || holder.isBlank()
+      ? FALLBACK_HOLDER_NAME.toUpperCase()
+      : holder.toUpperCase();
   }
 
   private boolean matchesDirection(
-    AccountActivityResponse transaction,
+    AccountTransactionEntity transaction,
     TransactionDirection direction
   ) {
     return switch (direction) {
-      case IN -> transaction.amount().signum() > 0;
-      case OUT -> transaction.amount().signum() < 0;
+      case IN -> transaction.getAmount().signum() > 0;
+      case OUT -> transaction.getAmount().signum() < 0;
       case ALL -> true;
     };
   }
 
   private boolean matchesDateRange(
-    AccountActivityResponse transaction,
+    AccountTransactionEntity transaction,
     LocalDate dateFrom,
     LocalDate dateTo
   ) {
-    LocalDate transactionDate = transaction.timestamp().atZone(COLOMBO).toLocalDate();
+    LocalDate transactionDate = transaction.getOccurredAt().atZone(COLOMBO).toLocalDate();
     if (dateFrom != null && transactionDate.isBefore(dateFrom)) {
       return false;
     }
-    if (dateTo != null && transactionDate.isAfter(dateTo)) {
-      return false;
-    }
-    return true;
+    return dateTo == null || !transactionDate.isAfter(dateTo);
   }
 
   private boolean matchesAmountRange(
-    AccountActivityResponse transaction,
+    AccountTransactionEntity transaction,
     BigDecimal minAmount,
     BigDecimal maxAmount
   ) {
-    BigDecimal absoluteAmount = transaction.amount().abs();
+    BigDecimal absoluteAmount = transaction.getAmount().abs();
     if (minAmount != null && absoluteAmount.compareTo(minAmount) < 0) {
       return false;
     }
-    if (maxAmount != null && absoluteAmount.compareTo(maxAmount) > 0) {
-      return false;
-    }
-    return true;
+    return maxAmount == null || absoluteAmount.compareTo(maxAmount) <= 0;
   }
 
-  private boolean matchesType(AccountActivityResponse transaction, String type) {
-    return type == null || transaction.transactionType().equalsIgnoreCase(type);
+  private boolean matchesType(AccountTransactionEntity transaction, String type) {
+    return type == null || transaction.getTransactionType().equalsIgnoreCase(type);
   }
 
   private String normalizeType(String type) {
@@ -963,65 +1030,67 @@ public class AccountsService {
     return type.trim().toUpperCase();
   }
 
+  private String blankTo(String value, String fallback) {
+    return value == null || value.isBlank() ? fallback : value;
+  }
+
   private StatementSnapshot buildStatementSnapshot(
-    AccountState account,
-    List<AccountActivityResponse> accountTransactions
+    AccountEntity account,
+    List<AccountTransactionEntity> accountTransactions
   ) {
-    LocalDate statementDate = LocalDate.of(2026, 8, 1);
-    LocalDate periodStart = LocalDate.of(2026, 7, 1);
-    LocalDate periodEnd = LocalDate.of(2026, 7, 31);
-    List<AccountActivityResponse> statementTransactions = accountTransactions
+    LocalDate today = LocalDate.now(COLOMBO);
+    LocalDate periodStart = today.withDayOfMonth(1);
+    LocalDate periodEnd = today;
+    Instant periodStartInstant = periodStart.atStartOfDay(COLOMBO).toInstant();
+    Instant periodEndInstant = periodEnd.plusDays(1).atStartOfDay(COLOMBO).toInstant();
+
+    List<AccountTransactionEntity> statementTransactions = accountTransactions
       .stream()
-      .filter(
-        transaction ->
-          !transaction.timestamp().isBefore(periodStart.atStartOfDay(COLOMBO).toInstant())
-      )
-      .filter(transaction ->
-        transaction.timestamp().isBefore(periodEnd.plusDays(1).atStartOfDay(COLOMBO).toInstant())
-      )
-      .sorted(Comparator.comparing(AccountActivityResponse::timestamp))
+      .filter(transaction -> !transaction.getOccurredAt().isBefore(periodStartInstant))
+      .filter(transaction -> transaction.getOccurredAt().isBefore(periodEndInstant))
+      .sorted(Comparator.comparing(AccountTransactionEntity::getOccurredAt))
       .toList();
 
     BigDecimal credits = statementTransactions
       .stream()
-      .map(AccountActivityResponse::amount)
+      .map(AccountTransactionEntity::getAmount)
       .filter(amount -> amount.signum() > 0)
       .reduce(BigDecimal.ZERO, BigDecimal::add);
     BigDecimal debits = statementTransactions
       .stream()
-      .map(AccountActivityResponse::amount)
+      .map(AccountTransactionEntity::getAmount)
       .filter(amount -> amount.signum() < 0)
       .map(BigDecimal::abs)
       .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+    // Anything posted after the period (nothing, since the period ends today) is backed out so the
+    // closing figure always reconciles with the stored balance.
     BigDecimal postPeriodNet = accountTransactions
       .stream()
-      .filter(transaction ->
-        transaction.timestamp().isAfter(periodEnd.plusDays(1).atStartOfDay(COLOMBO).toInstant())
-      )
-      .map(AccountActivityResponse::amount)
+      .filter(transaction -> !transaction.getOccurredAt().isBefore(periodEndInstant))
+      .map(AccountTransactionEntity::getAmount)
       .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-    BigDecimal endingBalance = account.balance().subtract(postPeriodNet);
+    BigDecimal endingBalance = account.getBalance().subtract(postPeriodNet);
     BigDecimal previousBalance = endingBalance.subtract(credits.subtract(debits));
     BigDecimal runningBalance = previousBalance;
 
     List<StatementTransactionRow> rows = new ArrayList<>();
-    for (AccountActivityResponse transaction : statementTransactions) {
-      runningBalance = runningBalance.add(transaction.amount());
+    for (AccountTransactionEntity transaction : statementTransactions) {
+      runningBalance = runningBalance.add(transaction.getAmount());
       rows.add(
         new StatementTransactionRow(
-          STATEMENT_SHORT_DATE.format(transaction.timestamp().atZone(COLOMBO).toLocalDate()),
-          transaction.merchant(),
-          transaction.amount().signum() < 0 ? transaction.amount().abs() : null,
-          transaction.amount().signum() > 0 ? transaction.amount() : null,
+          STATEMENT_SHORT_DATE.format(transaction.getOccurredAt().atZone(COLOMBO).toLocalDate()),
+          transaction.getMerchant(),
+          transaction.getAmount().signum() < 0 ? transaction.getAmount().abs() : null,
+          transaction.getAmount().signum() > 0 ? transaction.getAmount() : null,
           runningBalance
         )
       );
     }
 
     return new StatementSnapshot(
-      statementDate,
+      today,
       periodStart,
       periodEnd,
       previousBalance,
@@ -1032,9 +1101,16 @@ public class AccountsService {
     );
   }
 
-  private byte[] buildStatementPdf(AccountState account, StatementSnapshot snapshot) {
+  private byte[] buildStatementPdf(AccountEntity account, StatementSnapshot snapshot) {
     PDFont regular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
     PDFont bold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+    String holderName =
+      account.getHolderName() == null || account.getHolderName().isBlank()
+        ? FALLBACK_HOLDER_NAME
+        : account.getHolderName();
+    String addressLine =
+      account.getHolderAddressLine() == null ? "" : account.getHolderAddressLine();
+    String addressCity = account.getHolderCity() == null ? "" : account.getHolderCity();
 
     try (
       PDDocument document = new PDDocument();
@@ -1059,9 +1135,13 @@ public class AccountsService {
         drawText(content, bold, 20, 92, y - 4, "Bank Statement");
 
         float rightColumnX = 370;
-        drawText(content, bold, 14, rightColumnX, y - 2, DEMO_FULL_NAME);
-        drawText(content, regular, 12, rightColumnX, y - 22, DEMO_ADDRESS_LINE);
-        drawText(content, regular, 12, rightColumnX, y - 40, DEMO_ADDRESS_CITY);
+        drawText(content, bold, 14, rightColumnX, y - 2, holderName);
+        if (!addressLine.isBlank()) {
+          drawText(content, regular, 12, rightColumnX, y - 22, addressLine);
+        }
+        if (!addressCity.isBlank()) {
+          drawText(content, regular, 12, rightColumnX, y - 40, addressCity);
+        }
         drawText(content, bold, 10, rightColumnX, y - 70, "ACCOUNT NUMBER:");
         drawText(
           content,
@@ -1069,7 +1149,7 @@ public class AccountsService {
           13,
           rightColumnX,
           y - 88,
-          maskStatementAccountNumber(account.accountNumber())
+          maskStatementAccountNumber(account.getAccountNumber())
         );
 
         float infoY = y - 78;
@@ -1159,6 +1239,16 @@ public class AccountsService {
         drawDivider(content, left, right, headerY - 8);
 
         float rowY = headerY - 28;
+        if (snapshot.rows().isEmpty()) {
+          drawText(
+            content,
+            regular,
+            12,
+            colDate,
+            rowY,
+            "No transactions were posted in this period."
+          );
+        }
         for (StatementTransactionRow row : snapshot.rows()) {
           drawText(content, regular, 12, colDate, rowY, row.dateLabel());
           drawText(content, regular, 12, colDescription, rowY, row.description());
@@ -1270,73 +1360,173 @@ public class AccountsService {
 
   private String formatMoney(BigDecimal amount, boolean includeCurrency) {
     String formatted = MONEY_FORMAT.format(amount);
-    return includeCurrency ? "LKR " + formatted : formatted;
-  }
-
-  private AccountState requireLinkedAccount(String id) {
-    AccountState account = accountsById.get(id);
-    if (account == null || !linkedAccountIds.contains(id)) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found");
-    }
-    return account;
-  }
-
-  private List<AccountActivityResponse> accountActivity(String accountId) {
-    if (accountId.equals(primaryAccount.id())) {
-      return ACCOUNT_ACTIVITY;
-    }
-    if (accountId.equals(savingsAccount.id())) {
-      return SAVINGS_ACCOUNT_ACTIVITY;
-    }
-    return List.of();
+    return includeCurrency ? DEFAULT_CURRENCY + " " + formatted : formatted;
   }
 
   private String normalizeIdentifier(String value) {
     return value == null ? "" : value.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
   }
 
-  private AccountResponse toAccountResponse(AccountState state) {
+  /**
+   * The nickname the customer typed, trimmed; the supplied fallback is used when they left the
+   * field empty. The column is limited to 120 characters, so a longer label is cut to fit.
+   */
+  private String nicknameOrDefault(String nickname, String fallback) {
+    if (nickname == null || nickname.isBlank()) {
+      return fallback;
+    }
+    String trimmed = nickname.trim();
+    return trimmed.length() > 120 ? trimmed.substring(0, 120) : trimmed;
+  }
+
+  // --------------------------------------------------------------------
+  // Derived presentation values (all computed from stored rows)
+  // --------------------------------------------------------------------
+
+  /** Net movement over the last 30 days as a percentage of the balance 30 days ago. */
+  private double monthlyChangePercent(AccountEntity account) {
+    BigDecimal net = transactionRepository
+      .findByAccountIdAndOccurredAtAfter(account.getId(), Instant.now().minus(Duration.ofDays(30)))
+      .stream()
+      .map(AccountTransactionEntity::getAmount)
+      .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal opening = account.getBalance().subtract(net);
+    if (opening.signum() == 0) {
+      return 0;
+    }
+    return net
+      .multiply(BigDecimal.valueOf(100))
+      .divide(opening.abs(), 1, RoundingMode.HALF_UP)
+      .doubleValue();
+  }
+
+  /** How fresh the balance is, based on when the account was last touched. */
+  private String verifiedLabel(AccountEntity account) {
+    Instant reference =
+      account.getUpdatedAt() == null ? account.getCreatedAt() : account.getUpdatedAt();
+    if (reference == null) {
+      return "Just now";
+    }
+    long minutes = Duration.between(reference, Instant.now()).toMinutes();
+    if (minutes < 1) {
+      return "Just now";
+    }
+    if (minutes < 60) {
+      return minutes + "m ago";
+    }
+    long hours = minutes / 60;
+    if (hours < 24) {
+      return hours + "h ago";
+    }
+    return hours / 24 + "d ago";
+  }
+
+  private String dateGroupLabel(Instant occurredAt) {
+    LocalDate date = occurredAt.atZone(COLOMBO).toLocalDate();
+    LocalDate today = LocalDate.now(COLOMBO);
+    String formatted = ACTIVITY_DATE.format(date);
+    if (date.equals(today)) {
+      return "Today - " + formatted;
+    }
+    if (date.equals(today.minusDays(1))) {
+      return "Yesterday - " + formatted;
+    }
+    return formatted;
+  }
+
+  private String shortDateLabel(Instant occurredAt) {
+    LocalDate date = occurredAt.atZone(COLOMBO).toLocalDate();
+    LocalDate today = LocalDate.now(COLOMBO);
+    if (date.equals(today)) {
+      return "Today";
+    }
+    if (date.equals(today.minusDays(1))) {
+      return "Yesterday";
+    }
+    return SHORT_ACTIVITY_DATE.format(date);
+  }
+
+  private AccountResponse toAccountResponse(AccountEntity account) {
     return new AccountResponse(
-      state.id(),
-      state.nickname(),
-      state.accountType(),
-      state.lastFourDigits(),
-      state.accountNumber(),
-      state.balance(),
-      state.currency(),
-      state.monthlyChangePercent(),
-      state.verifiedLabel(),
-      state.status(),
-      state.frozen(),
-      state.freezeReason()
+      account.getId(),
+      account.getNickname(),
+      account.getAccountType(),
+      account.lastFourDigits(),
+      account.getAccountNumber(),
+      account.getBalance(),
+      account.getCurrency(),
+      monthlyChangePercent(account),
+      verifiedLabel(account),
+      account.getStatus(),
+      account.isFrozen(),
+      account.getFreezeReason()
     );
   }
 
-  private AccountDetailResponse toAccountDetailResponse(AccountState state) {
+  private AccountDetailResponse toAccountDetailResponse(AccountEntity account) {
     return new AccountDetailResponse(
-      state.id(),
-      state.nickname(),
-      productNameByAccountId.getOrDefault(
-        state.id(),
-        "CURRENT".equals(state.accountType()) ? "Current account" : "Savings account"
-      ),
-      state.currency(),
-      state.balance(),
-      state.accountNumber(),
-      state.ifscCode(),
-      state.openedOn(),
-      state.homeBranch(),
-      state.ownershipLabel(),
-      state.status(),
-      state.frozen(),
-      state.freezeReason(),
-      List.copyOf(cardsByAccountId.getOrDefault(state.id(), List.of()))
+      account.getId(),
+      account.getNickname(),
+      account.getProductName() == null
+        ? "CURRENT".equals(account.getAccountType())
+          ? "Current account"
+          : "Savings account"
+        : account.getProductName(),
+      account.getCurrency(),
+      account.getBalance(),
+      account.getAccountNumber(),
+      account.getIfscCode(),
+      STATEMENT_DATE.format(account.getOpenedOn()),
+      account.getHomeBranch(),
+      account.getOwnershipLabel(),
+      account.getStatus(),
+      account.isFrozen(),
+      account.getFreezeReason(),
+      cardRepository
+        .findByAccountIdOrderByCreatedAtAsc(account.getId())
+        .stream()
+        .map(this::toCardResponse)
+        .toList()
     );
   }
+
+  private BankCardResponse toCardResponse(BankCardEntity card) {
+    return new BankCardResponse(
+      card.getId(),
+      card.getAccountId(),
+      card.getCardType(),
+      card.getProductName(),
+      card.getMaskedNumber(),
+      card.getCardholderName(),
+      card.getExpiryDate(),
+      card.getScheme(),
+      card.getStatus(),
+      card.isJointAccountCard()
+    );
+  }
+
+  private AccountActivityResponse toActivityResponse(AccountTransactionEntity transaction) {
+    return new AccountActivityResponse(
+      transaction.getId(),
+      transaction.getMerchant(),
+      transaction.getCategory(),
+      transaction.getTransactionType(),
+      transaction.getLocation(),
+      transaction.getAmount(),
+      transaction.getCurrency(),
+      transaction.getOccurredAt(),
+      dateGroupLabel(transaction.getOccurredAt()),
+      transaction.getJournalId(),
+      transaction.isFlagged()
+    );
+  }
+
+  // --------------------------------------------------------------------
+  // In-flight confirmation state
+  // --------------------------------------------------------------------
 
   private static final class PendingAccountChange {
 
-    private final UUID id;
     private final String accountId;
     private final String type;
     private final String reason;
@@ -1345,14 +1535,12 @@ public class AccountsService {
     private int failedAttempts;
 
     private PendingAccountChange(
-      UUID id,
       String accountId,
       String type,
       String reason,
       UUID userId,
       Instant expiresAt
     ) {
-      this.id = id;
       this.accountId = accountId;
       this.type = type;
       this.reason = reason;
@@ -1389,18 +1577,18 @@ public class AccountsService {
     }
   }
 
-  private record EligibleAccount(AccountState account, String nationalIdOrPassport) {}
-
   private static final class PendingAccountLink {
 
     private final String accountId;
     private final UUID userId;
+    private final String nickname;
     private final Instant expiresAt;
     private int failedAttempts;
 
-    private PendingAccountLink(String accountId, UUID userId, Instant expiresAt) {
+    private PendingAccountLink(String accountId, UUID userId, String nickname, Instant expiresAt) {
       this.accountId = accountId;
       this.userId = userId;
+      this.nickname = nickname;
       this.expiresAt = expiresAt;
     }
 
@@ -1410,6 +1598,10 @@ public class AccountsService {
 
     private UUID userId() {
       return userId;
+    }
+
+    private String nickname() {
+      return nickname;
     }
 
     private Instant expiresAt() {
@@ -1462,18 +1654,24 @@ public class AccountsService {
   private static final class PendingCardLink {
 
     private final String accountId;
+    private final String cardId;
     private final UUID userId;
     private final Instant expiresAt;
     private int failedAttempts;
 
-    private PendingCardLink(String accountId, UUID userId, Instant expiresAt) {
+    private PendingCardLink(String accountId, String cardId, UUID userId, Instant expiresAt) {
       this.accountId = accountId;
+      this.cardId = cardId;
       this.userId = userId;
       this.expiresAt = expiresAt;
     }
 
     private String accountId() {
       return accountId;
+    }
+
+    private String cardId() {
+      return cardId;
     }
 
     private UUID userId() {
@@ -1511,136 +1709,4 @@ public class AccountsService {
     BigDecimal deposit,
     BigDecimal balance
   ) {}
-
-  private static final class AccountState {
-
-    private final String id;
-    private final String nickname;
-    private final String accountType;
-    private final String lastFourDigits;
-    private final BigDecimal balance;
-    private final String currency;
-    private final double monthlyChangePercent;
-    private final String verifiedLabel;
-    private final String accountNumber;
-    private final String ifscCode;
-    private final String openedOn;
-    private final String homeBranch;
-    private final String ownershipLabel;
-    private String status;
-    private boolean frozen;
-    private String freezeReason;
-
-    private AccountState(
-      String id,
-      String nickname,
-      String accountType,
-      String lastFourDigits,
-      BigDecimal balance,
-      String currency,
-      double monthlyChangePercent,
-      String verifiedLabel,
-      String accountNumber,
-      String ifscCode,
-      String openedOn,
-      String homeBranch,
-      String ownershipLabel,
-      String status,
-      boolean frozen,
-      String freezeReason
-    ) {
-      this.id = id;
-      this.nickname = nickname;
-      this.accountType = accountType;
-      this.lastFourDigits = lastFourDigits;
-      this.balance = balance;
-      this.currency = currency;
-      this.monthlyChangePercent = monthlyChangePercent;
-      this.verifiedLabel = verifiedLabel;
-      this.accountNumber = accountNumber;
-      this.ifscCode = ifscCode;
-      this.openedOn = openedOn;
-      this.homeBranch = homeBranch;
-      this.ownershipLabel = ownershipLabel;
-      this.status = status;
-      this.frozen = frozen;
-      this.freezeReason = freezeReason;
-    }
-
-    private String id() {
-      return id;
-    }
-
-    private String nickname() {
-      return nickname;
-    }
-
-    private String accountType() {
-      return accountType;
-    }
-
-    private String lastFourDigits() {
-      return lastFourDigits;
-    }
-
-    private BigDecimal balance() {
-      return balance;
-    }
-
-    private String currency() {
-      return currency;
-    }
-
-    private double monthlyChangePercent() {
-      return monthlyChangePercent;
-    }
-
-    private String verifiedLabel() {
-      return verifiedLabel;
-    }
-
-    private String accountNumber() {
-      return accountNumber;
-    }
-
-    private String ifscCode() {
-      return ifscCode;
-    }
-
-    private String openedOn() {
-      return openedOn;
-    }
-
-    private String homeBranch() {
-      return homeBranch;
-    }
-
-    private String ownershipLabel() {
-      return ownershipLabel;
-    }
-
-    private String status() {
-      return status;
-    }
-
-    private boolean frozen() {
-      return frozen;
-    }
-
-    private String freezeReason() {
-      return freezeReason;
-    }
-
-    private void freeze(String reason) {
-      frozen = true;
-      freezeReason = reason == null || reason.isBlank() ? "Customer protection request" : reason;
-      status = "Frozen - Protected";
-    }
-
-    private void unfreeze() {
-      frozen = false;
-      freezeReason = null;
-      status = "Active - Verified";
-    }
-  }
 }

@@ -17,6 +17,7 @@ import userService, { type UserProfile } from '../../api/userService';
 import TransactionRow from '../../components/TransactionRow';
 import BottomNav from '../../components/BottomNav';
 import { getProfilePhoto } from '../../utils/profilePhoto';
+import { DEFAULT_CURRENCY, currencyOf } from '../../utils/currency';
 
 const { Text, Title, Link } = Typography;
 
@@ -40,7 +41,7 @@ const getInitials = (name?: string) => {
     .toUpperCase();
 };
 
-const formatCurrency = (value: number, currency: string = 'USD') =>
+const formatCurrency = (value: number, currency: string = DEFAULT_CURRENCY) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
@@ -236,7 +237,7 @@ const Dashboard: React.FC = () => {
                 margin: '16px 0 20px',
               }}
             >
-              {formatCurrency(account.balance, account.currency || 'USD')}
+              {formatCurrency(account.balance, currencyOf(account))}
             </Text>
 
             <Flex justify="space-between" align="center">
@@ -358,7 +359,7 @@ const Dashboard: React.FC = () => {
                 category={txn.category || 'General'}
                 date={txn.date || ''}
                 amount={txn.amount}
-                currency={account?.currency || 'USD'}
+                currency={currencyOf(account)}
                 verified={txn.verified}
                 showDivider={index < transactions.length - 1}
               />

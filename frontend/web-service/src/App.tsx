@@ -15,6 +15,7 @@ import TransferMoney from './pages/TransferMoney/TransferMoney';
 import PayVendor from './pages/PayVendor/PayVendor';
 import LoanApplication from './pages/LoanApplication/LoanApplication';
 import LoanRepaymentTracker from './pages/LoanRepaymentTracker/LoanRepaymentTracker';
+import TotpSetup from './pages/TotpSetup/TotpSetup';
 import TransactionHistory from './pages/TransactionHistory/TransactionHistory';
 import Notifications from './pages/Notifications/Notifications';
 import Profile from './pages/Profile/Profile';
@@ -49,6 +50,7 @@ const App: React.FC = () => {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<CreateAccount />} />
+        <Route path="/totp/setup" element={<TotpSetup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
         <Route path="/verify-otp" element={<OtpVerification />} />

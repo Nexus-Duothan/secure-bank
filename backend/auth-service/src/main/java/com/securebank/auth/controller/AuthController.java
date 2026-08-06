@@ -29,6 +29,13 @@ public class AuthController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
+  @PostMapping("/register/verify-phone")
+  public ResponseEntity<Map<String, Object>> verifyRegistrationPhone(
+    @Valid @RequestBody RegistrationOtpVerifyRequest request
+  ) {
+    return ResponseEntity.ok(authService.verifyRegistrationPhone(request));
+  }
+
   @PostMapping("/verify-kyc")
   public ResponseEntity<KycApplicationResponse> submitKyc(
     Authentication authentication,
@@ -121,12 +128,38 @@ public class AuthController {
     return ResponseEntity.noContent().build();
   }
 
+  /**
+   * Stages a password change for the signed-in customer. The reply is the authenticator challenge;
+   * the password itself only changes on the confirm call below.
+   */
+  @PostMapping("/password/change/request")
+  public ResponseEntity<OtpChallengeResponse> requestPasswordChange(
+    Authentication authentication,
+    @Valid @RequestBody PasswordChangeRequest request
+  ) {
+    UUID userId = UUID.fromString(authentication.getName());
+    return ResponseEntity.ok(authService.requestPasswordChange(userId, request));
+  }
+
+  @PostMapping("/password/change/{changeRequestId}/confirm")
+  public ResponseEntity<Map<String, String>> confirmPasswordChange(
+    Authentication authentication,
+    @PathVariable UUID changeRequestId,
+    @Valid @RequestBody PasswordChangeConfirmRequest request
+  ) {
+    UUID userId = UUID.fromString(authentication.getName());
+    authService.confirmPasswordChange(userId, changeRequestId, request);
+    return ResponseEntity.ok(
+      Map.of("message", "Password changed. Sign in again with your new password.")
+    );
+  }
+
   @PostMapping("/password-reset/request")
   public ResponseEntity<Map<String, String>> requestPasswordReset(
     @Valid @RequestBody PasswordResetRequest request
   ) {
-    String token = authService.requestPasswordReset(request);
-    return ResponseEntity.ok(Map.of("message", "Password reset token generated", "token", token));
+    authService.requestPasswordReset(request);
+    return ResponseEntity.ok(Map.of("message", "Password update link sent"));
   }
 
   @PostMapping("/password-reset/confirm")

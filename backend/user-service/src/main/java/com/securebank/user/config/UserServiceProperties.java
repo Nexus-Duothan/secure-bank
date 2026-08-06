@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** Externalised tuning for the User &amp; RBAC service (see {@code application.yml}). */
 @ConfigurationProperties(prefix = "securebank.user")
-public record UserServiceProperties(boolean seedDemoData, Cors cors, Otp otp, Security security) {
+public record UserServiceProperties(Cors cors, Otp otp, Security security) {
   public UserServiceProperties {
     cors = cors == null ? new Cors(null) : cors;
     otp = otp == null ? new Otp(null, 0) : otp;

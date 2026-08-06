@@ -85,13 +85,10 @@ const CreateAccount: React.FC = () => {
       });
       navigate('/verify-otp', {
         state: {
-          // Registration has no dedicated pre-auth endpoint yet, so the new account's
-          // userId is forwarded as the session reference the shared OTP screen submits
-          // alongside the code, the same way login's preAuthToken is used.
           preAuthToken: response.userId,
+          username: response.username,
           usernameOrEmail: values.email,
-          // Registration is the one flow still verified by SMS code, so the shared screen
-          // keeps its resend link here and shows authenticator wording everywhere else.
+          email: values.email,
           registration: true,
         },
       });

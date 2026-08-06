@@ -6,7 +6,7 @@ import StaffLayout from '../../components/StaffLayout';
 import { OFFICER_NAV } from '../../components/staffNavs';
 import kycService from '../../api/kycService';
 import lendingService from '../../api/lendingService';
-import auditService from '../../api/auditService';
+import paymentsService from '../../api/paymentsService';
 import adminService from '../../api/adminService';
 const { Text } = Typography;
 
@@ -39,10 +39,10 @@ const OfficerDashboard: React.FC = () => {
         if (!cancelled) setLoanCount(0);
       });
 
-    auditService
-      .getTransactions()
+    paymentsService
+      .getHeldPayments()
       .then((data) => {
-        if (!cancelled) setFlaggedCount((data || []).filter((entry) => entry.flagged).length);
+        if (!cancelled) setFlaggedCount((data || []).length);
       })
       .catch(() => {
         if (!cancelled) setFlaggedCount(0);
@@ -86,7 +86,7 @@ const OfficerDashboard: React.FC = () => {
       value: flaggedCount,
       icon: <FlagOutlined style={{ color: token.colorError }} />,
       path: '/officer/flagged',
-      hint: 'Held by fraud rules; reviewed in the bank system (FR-31).',
+      hint: 'Payments held by fraud controls and waiting for your decision.',
     },
     {
       key: 'customers',

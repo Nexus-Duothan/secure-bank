@@ -1,6 +1,7 @@
 import React from 'react';
 import { Avatar, Flex, Typography, theme } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import { DEFAULT_CURRENCY } from '../utils/currency';
 
 const { Text } = Typography;
 
@@ -32,7 +33,7 @@ const TransactionRow: React.FC<TransactionRowProps> = ({
   category,
   date,
   amount,
-  currency = 'USD',
+  currency = DEFAULT_CURRENCY,
   verified = false,
   flagged = false,
   journalId,

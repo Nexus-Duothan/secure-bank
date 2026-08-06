@@ -23,6 +23,8 @@ import userService from '../../api/userService';
 import authService from '../../api/authService';
 import sessionUser, { homePathForRole } from '../../api/sessionUser';
 import { getApiErrorMessage } from '../../api/apiError';
+import { PasswordStrengthMeter } from '../../components/PasswordStrength';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_PATTERN } from '../../components/passwordRules';
 import type { NotificationPreferences, Role, UserProfile } from '../../types';
 
 const { Text, Title } = Typography;
@@ -37,6 +39,12 @@ interface PersonalDetailsFormValues {
   fullName: string;
   email: string;
   phoneNumber: string;
+}
+
+interface PasswordFormValues {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 const getInitials = (name: string) =>
@@ -89,6 +97,9 @@ const StaffProfile: React.FC = () => {
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFS);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const newPassword = Form.useWatch('newPassword', passwordForm) ?? '';
 
   useEffect(() => {
     const state = location.state as { otpSuccessMessage?: string } | null;
@@ -161,15 +172,23 @@ const StaffProfile: React.FC = () => {
     }
   };
 
-  const handlePasswordChange = async () => {
+  /**
+   * Stages the new password behind the authenticator step. The password only changes once the code
+   * is confirmed, which also ends every session and sends the user back to sign-in.
+   */
+  const handlePasswordChange = async (values: PasswordFormValues) => {
     setPasswordSubmitting(true);
     try {
-      const response = await authService.requestPasswordReset(profile.email);
-      messageApi.success('A secure password reset link has been issued for your account.');
-      navigate(`/reset-password/${response.token}`);
+      const challenge = await authService.requestPasswordChange({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      passwordForm.resetFields();
+      setPasswordOpen(false);
+      navigate('/verify-otp', { state: { flow: 'password-change', challenge } });
     } catch (error) {
       messageApi.error(
-        getApiErrorMessage(error, 'We could not start the password reset flow. Please try again.')
+        getApiErrorMessage(error, 'We could not start the password change. Please try again.')
       );
     } finally {
       setPasswordSubmitting(false);
@@ -287,14 +306,10 @@ const StaffProfile: React.FC = () => {
       <Card size="small" title="Security">
         <Flex vertical gap={8}>
           <Text style={{ fontSize: 13, color: token.colorTextSecondary }}>
-            Password changes use the secure reset flow and need your authenticator code.
+            A password change needs your current password and the code from your authenticator app.
+            You then sign in again with the new password.
           </Text>
-          <Button
-            icon={<KeyOutlined />}
-            loading={passwordSubmitting}
-            onClick={handlePasswordChange}
-            block
-          >
+          <Button icon={<KeyOutlined />} onClick={() => setPasswordOpen(true)} block>
             Change password
           </Button>
         </Flex>
@@ -350,6 +365,74 @@ const StaffProfile: React.FC = () => {
             rules={[{ required: true, message: 'Please enter your mobile number' }]}
           >
             <Input size="large" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={passwordOpen}
+        title="Change password"
+        okText="Save"
+        confirmLoading={passwordSubmitting}
+        onOk={() => passwordForm.submit()}
+        onCancel={() => {
+          setPasswordOpen(false);
+          passwordForm.resetFields();
+        }}
+      >
+        <Text
+          style={{
+            display: 'block',
+            marginBottom: 16,
+            fontSize: 13,
+            color: token.colorTextSecondary,
+          }}
+        >
+          After you save, enter the current code from your authenticator app. You then sign in again
+          with the new password.
+        </Text>
+        <Form<PasswordFormValues>
+          form={passwordForm}
+          layout="vertical"
+          colon={false}
+          requiredMark={false}
+          disabled={passwordSubmitting}
+          onFinish={handlePasswordChange}
+        >
+          <Form.Item
+            label="Current password"
+            name="currentPassword"
+            rules={[{ required: true, message: 'Enter your current password' }]}
+          >
+            <Input.Password size="large" autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            label="New password"
+            name="newPassword"
+            style={{ marginBottom: 8 }}
+            rules={[
+              { required: true, message: 'Create a new password' },
+              { pattern: PASSWORD_PATTERN, message: PASSWORD_COMPLEXITY_MESSAGE },
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
+          </Form.Item>
+          <PasswordStrengthMeter password={newPassword} />
+          <Form.Item
+            label="Confirm new password"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: 'Confirm your new password' },
+              ({ getFieldValue }) => ({
+                validator: (_, value) =>
+                  !value || getFieldValue('newPassword') === value
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('Passwords do not match')),
+              }),
+            ]}
+          >
+            <Input.Password size="large" autoComplete="new-password" />
           </Form.Item>
         </Form>
       </Modal>

@@ -30,6 +30,9 @@ jwt:
   secret: ${JWT_SECRET:dGhpc0lzQVZlcnlTZWN1cmVTZWNyZXRLZXlGb3JTZWN1cmVCYW5rSkdUVG9rZW5zMjAyNiE=}
   access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:300}
 
+totp-service:
+  url: ${TOTP_SERVICE_URL:http://localhost:8082}
+
 # accounts-service does not exist yet (bare scaffold as of this writing). This client
 # points at the contract documented in README.md ("Accounts Service Integration") so it's
 # ready to work once that service is built.

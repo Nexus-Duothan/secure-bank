@@ -19,6 +19,14 @@ public interface LoginSmsAlertService {
     Instant occurredAt
   );
 
+  void sendPasswordResetLink(
+    UUID userId,
+    String email,
+    String fullName,
+    String resetUrl,
+    Instant expiresAt
+  );
+
   void sendRegistrationOtpChallenge(
     UUID userId,
     String fullName,

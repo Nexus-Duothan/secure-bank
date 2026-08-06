@@ -45,6 +45,7 @@ public class SecurityConfig {
         auth
           .requestMatchers(
             "/api/v1/auth/register",
+            "/api/v1/auth/register/verify-phone",
             "/api/v1/auth/login",
             "/api/v1/auth/login/verify-mfa",
             "/api/v1/auth/resend-otp",

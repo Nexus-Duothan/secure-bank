@@ -24,6 +24,8 @@ const RESEND_SECONDS = 30;
 interface LoginLocationState {
   preAuthToken?: string;
   usernameOrEmail?: string;
+  username?: string;
+  email?: string;
   /** Set only by sign-up, the one flow still confirmed by an SMS code to the mobile number. */
   registration?: boolean;
 }
@@ -71,6 +73,15 @@ interface AdminChangeLocationState {
   returnTo: string;
 }
 
+/**
+ * A password change staged from the profile page. There is no returnTo: once the password changes
+ * every session is revoked, so the only way on is signing in again with the new password.
+ */
+interface PasswordChangeLocationState {
+  flow: 'password-change';
+  challenge: OtpChallenge;
+}
+
 type LocationState =
   | LoginLocationState
   | ProfileChangeLocationState
@@ -78,7 +89,8 @@ type LocationState =
   | AccountLinkLocationState
   | AccountOpeningLocationState
   | CreditCardLinkLocationState
-  | AdminChangeLocationState;
+  | AdminChangeLocationState
+  | PasswordChangeLocationState;
 
 const OtpVerification: React.FC = () => {
   const navigate = useNavigate();
@@ -93,13 +105,15 @@ const OtpVerification: React.FC = () => {
   const accountOpeningFlow = changeRouteState?.flow === 'account-opening';
   const creditCardLinkFlow = changeRouteState?.flow === 'credit-card-link';
   const adminChangeFlow = changeRouteState?.flow === 'admin-change';
+  const passwordChangeFlow = changeRouteState?.flow === 'password-change';
   const accountOrProfileChangeFlow =
     profileChangeFlow ||
     accountChangeFlow ||
     accountLinkFlow ||
     accountOpeningFlow ||
     creditCardLinkFlow ||
-    adminChangeFlow;
+    adminChangeFlow ||
+    passwordChangeFlow;
   const preAuthToken = !accountOrProfileChangeFlow ? loginRouteState?.preAuthToken : undefined;
   const registrationFlow = !accountOrProfileChangeFlow && loginRouteState?.registration === true;
   const accountOrProfileChallenge = changeRouteState?.challenge ?? null;
@@ -109,7 +123,11 @@ const OtpVerification: React.FC = () => {
       ? '/accounts/cards/link'
       : accountLinkFlow
         ? '/accounts/link'
-        : (changeRouteState?.returnTo ?? '/profile');
+        : passwordChangeFlow
+          ? '/profile?panel=password'
+          : changeRouteState && 'returnTo' in changeRouteState
+            ? changeRouteState.returnTo
+            : '/profile';
 
   const [otp, setOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -118,14 +136,7 @@ const OtpVerification: React.FC = () => {
 
   useEffect(() => {
     if (accountOrProfileChangeFlow && !accountOrProfileChallenge) {
-      const fallbackPath = accountOpeningFlow
-        ? '/accounts/open'
-        : creditCardLinkFlow
-          ? '/accounts/cards/link'
-          : accountLinkFlow
-            ? '/accounts/link'
-            : '/profile';
-      navigate(fallbackPath, { replace: true });
+      navigate(changeFlowBackPath, { replace: true });
       return;
     }
 
@@ -136,9 +147,7 @@ const OtpVerification: React.FC = () => {
     preAuthToken,
     accountOrProfileChallenge,
     accountOrProfileChangeFlow,
-    accountLinkFlow,
-    accountOpeningFlow,
-    creditCardLinkFlow,
+    changeFlowBackPath,
     navigate,
   ]);
 
@@ -202,11 +211,30 @@ const OtpVerification: React.FC = () => {
           replace: true,
           state: { otpSuccessMessage: changeRouteState.successMessage },
         });
+      } else if (passwordChangeFlow && accountOrProfileChallenge) {
+        await authService.confirmPasswordChange(accountOrProfileChallenge.changeRequestId, otp);
+        // The change revoked every session, this one included, so start again at sign-in.
+        tokenStorage.clear();
+        sessionUser.clear();
+        navigate('/login', {
+          replace: true,
+          state: { setupCompleteMessage: 'Password changed. Sign in with your new password.' },
+        });
       } else if (adminChangeFlow && accountOrProfileChallenge) {
         await adminService.confirmChange(accountOrProfileChallenge.changeRequestId, otp);
         navigate(changeRouteState.returnTo, {
           replace: true,
           state: { otpSuccessMessage: changeRouteState.successMessage },
+        });
+      } else if (registrationFlow && preAuthToken) {
+        const response = await authService.verifyRegistrationOtp(preAuthToken, otp);
+        navigate('/totp/setup', {
+          replace: true,
+          state: {
+            userId: response.userId,
+            username: response.username || loginRouteState?.username,
+            email: response.email || loginRouteState?.email || loginRouteState?.usernameOrEmail,
+          },
         });
       } else if (preAuthToken) {
         const response = await authService.verifyOtp({ preAuthToken, totpCode: otp });

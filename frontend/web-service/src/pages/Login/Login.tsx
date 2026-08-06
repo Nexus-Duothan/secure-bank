@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Flex, Form, Input, Typography, theme } from 'antd';
 import type { AxiosError } from 'axios';
 import { authService } from '../../api/authService';
@@ -13,9 +13,15 @@ interface LoginFormValues {
   password: string;
 }
 
+interface LoginLocationState {
+  setupCompleteMessage?: string;
+}
+
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
+  const routeState = (location.state as LoginLocationState | null) ?? null;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +53,15 @@ const Login: React.FC = () => {
         styles={{ body: { padding: 32 } }}
         style={{ boxShadow: '0 8px 24px rgba(11, 27, 43, 0.06)' }}
       >
+        {routeState?.setupCompleteMessage && (
+          <Alert
+            type="success"
+            message={routeState.setupCompleteMessage}
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
+        )}
+
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 24 }} />}
 
         <Form<LoginFormValues>

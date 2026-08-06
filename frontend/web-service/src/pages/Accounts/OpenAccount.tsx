@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Flex, Form, Segmented, Select, Typography, theme } from 'antd';
+import { Alert, Button, Card, Flex, Form, Input, Segmented, Select, Typography, theme } from 'antd';
 import { LeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import accountsService, {
   type AccountProduct,
@@ -183,6 +183,17 @@ const OpenAccount: React.FC = () => {
                   { label: 'Joint account', value: 'JOINT' },
                 ]}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="Account nickname (optional)"
+              name="nickname"
+              extra={`Your own name for this account. Left empty, we use ${
+                selectedProduct ? selectedProduct.name : 'the product name'
+              }.`}
+              rules={[{ max: 120, message: 'Keep the nickname under 120 characters' }]}
+            >
+              <Input size="large" autoComplete="off" placeholder="e.g. Holiday savings" />
             </Form.Item>
 
             <Button type="primary" size="large" block htmlType="submit" loading={submitting}>
