@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/k8s-gcp-deployment
   workflow_dispatch:
 
 permissions:
