@@ -1,67 +1,71 @@
+# Every Dockerfile in this repo copies paths relative to the repository root
+# (e.g. COPY backend/auth-service/src ...), so each build step must use "."
+# as its build context and select the Dockerfile with -f.
+
 steps:
   # 1. Frontend Web
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/frontend-web:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/frontend-web:latest', '-f', 'frontend/web-service/Dockerfile', 'frontend/web-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/frontend-web:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/frontend-web:latest', '-f', 'frontend/web-service/Dockerfile', '.']
     id: 'build-frontend-web'
     waitFor: ['-']
 
   # 2. API Gateway
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/api-gateway:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/api-gateway:latest', '-f', 'backend/api-gateway/Dockerfile', 'backend/api-gateway']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/api-gateway:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/api-gateway:latest', '-f', 'backend/api-gateway/Dockerfile', '.']
     id: 'build-api-gateway'
     waitFor: ['-']
 
   # 3. Auth Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/auth-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/auth-service:latest', '-f', 'backend/auth-service/Dockerfile', 'backend/auth-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/auth-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/auth-service:latest', '-f', 'backend/auth-service/Dockerfile', '.']
     id: 'build-auth-service'
     waitFor: ['-']
 
   # 4. User Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/user-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/user-service:latest', '-f', 'backend/user-service/Dockerfile', 'backend/user-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/user-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/user-service:latest', '-f', 'backend/user-service/Dockerfile', '.']
     id: 'build-user-service'
     waitFor: ['-']
 
   # 5. Accounts Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/accounts-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/accounts-service:latest', '-f', 'backend/accounts-service/Dockerfile', 'backend/accounts-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/accounts-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/accounts-service:latest', '-f', 'backend/accounts-service/Dockerfile', '.']
     id: 'build-accounts-service'
     waitFor: ['-']
 
   # 6. Transfer Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/transfer-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/transfer-service:latest', '-f', 'backend/transfer-service/Dockerfile', 'backend/transfer-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/transfer-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/transfer-service:latest', '-f', 'backend/transfer-service/Dockerfile', '.']
     id: 'build-transfer-service'
     waitFor: ['-']
 
   # 7. Payments Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/payments-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/payments-service:latest', '-f', 'backend/payments-service/Dockerfile', 'backend/payments-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/payments-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/payments-service:latest', '-f', 'backend/payments-service/Dockerfile', '.']
     id: 'build-payments-service'
     waitFor: ['-']
 
   # 8. Lending Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/lending-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/lending-service:latest', '-f', 'backend/lending-service/Dockerfile', 'backend/lending-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/lending-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/lending-service:latest', '-f', 'backend/lending-service/Dockerfile', '.']
     id: 'build-lending-service'
     waitFor: ['-']
 
   # 9. Notification Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/notification-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/notification-service:latest', '-f', 'backend/notification-service/Dockerfile', 'backend/notification-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/notification-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/notification-service:latest', '-f', 'backend/notification-service/Dockerfile', '.']
     id: 'build-notification-service'
     waitFor: ['-']
 
-  # 10. Audit Recovery Service
+  # 10. Audit Recovery Service (Rust, lives under security/)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/audit-recovery-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/audit-recovery-service:latest', '-f', 'backend/audit-service/Dockerfile', 'backend/audit-service']
-    id: 'build-audit-service'
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/audit-recovery-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/audit-recovery-service:latest', '-f', 'security/audit-recovery-service/Dockerfile', '.']
+    id: 'build-audit-recovery-service'
     waitFor: ['-']
 
   # 11. TOTP Service
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/totp-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/totp-service:latest', '-f', 'backend/totp-service/Dockerfile', 'backend/totp-service']
+    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/totp-service:$SHORT_SHA', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/totp-service:latest', '-f', 'backend/totp-service/Dockerfile', '.']
     id: 'build-totp-service'
     waitFor: ['-']
 
@@ -92,6 +96,10 @@ images:
 substitutions:
   _LOCATION: 'us-central1'
   _REPOSITORY: 'secure-bank-repo'
+
+# Eleven images (nine Maven builds, one Rust build, one npm build) do not fit
+# inside the 10 minute default.
+timeout: 3600s
 
 options:
   machineType: 'E2_HIGHCPU_8'
