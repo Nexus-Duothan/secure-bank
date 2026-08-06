@@ -132,6 +132,7 @@ if ! gcloud iam workload-identity-pools providers describe "$PROVIDER_NAME" \
         --workload-identity-pool="$POOL_NAME" \
         --display-name="GitHub Provider" \
         --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
+        --attribute-condition="assertion.repository != ''" \
         --issuer-uri="https://token.actions.githubusercontent.com"
 fi
 
